@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2025-01-02
+
+### Fixed
+- **StackOverflowError on file open** - Fixed critical bug that caused the IDE to freeze when opening Parquet files due to recursive layout calculation in tabbed pane
+- **Duplicate file loading** - Fixed issue where clicking on an already-open file would reload it instead of switching to the existing tab
+- **Tab display** - Restored tab titles showing filename with close indicator (×)
+
+### Improved
+- **Loading feedback** - Added loading panel with progress indicator while files are being loaded
+- **Welcome panel** - Shows helpful instructions when no files are open in Parquet Studio
+- **File validation** - Added validation for large files (>500MB warning, >1GB blocked) with user confirmation
+- **Error notifications** - Improved error messages with balloon notifications for better UX
+
+### Technical
+- Added `loadingFile` field to track files during loading process for better duplicate detection
+- Deferred tab selection using `SwingUtilities.invokeLater()` to prevent layout recursion
+- Added retry mechanism for opening Tool Window (3 attempts with 500ms delay)
+
+[1.4.1]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.4.1
+
 ## [1.4.0] - 2025-12-02
 
 ### Added
