@@ -14,5 +14,10 @@
                     icon="/icons/parquet_studio.svg"/>
         <fileTypeFactory implementation="com.github.jhordyhuaman.parquetstudio.filetype.ParquetFileTypeFactory"/>
         <fileEditorProvider implementation="com.github.jhordyhuaman.parquetstudio.factory.ParquetEditorProvider"/>
+
+        <!-- Notification group for user feedback -->
+        <notificationGroup id="Parquet Studio Notifications"
+                          displayType="BALLOON"
+                          isLogByDefault="true"/>
     </extensions>
 </idea-plugin>

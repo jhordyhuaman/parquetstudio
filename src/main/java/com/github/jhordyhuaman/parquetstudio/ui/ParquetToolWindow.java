@@ -13,7 +13,6 @@
  */
 package com.github.jhordyhuaman.parquetstudio.ui;
 
-import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
 import java.awt.BorderLayout;
@@ -27,7 +26,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.*;
-import javax.swing.Box;
 import javax.swing.filechooser.FileFilter;
 
 /**
@@ -40,6 +38,8 @@ public class ParquetToolWindow extends JPanel {
   private static final Set<String> openingFiles = ConcurrentHashMap.newKeySet();
 
   private JTabbedPane tabbedPane;
+  private JPanel welcomePanel;
+  private JPanel contentPanel;
   private final Map<ParquetEditorPanel, Integer> panelToTabIndex = new HashMap<>();
   private JButton openButton;
 
@@ -53,6 +53,13 @@ public class ParquetToolWindow extends JPanel {
     // Toolbar
     JPanel toolbarPanel = createToolbar();
     add(toolbarPanel, BorderLayout.NORTH);
+
+    // Content panel with CardLayout to switch between welcome and tabs
+    contentPanel = new JPanel(new java.awt.CardLayout());
+
+    // Welcome panel (shown when no files are open)
+    welcomePanel = createWelcomePanel();
+    contentPanel.add(welcomePanel, "WELCOME");
 
     // Tabbed pane for multiple files
     tabbedPane = new JTabbedPane();
@@ -82,8 +89,92 @@ public class ParquetToolWindow extends JPanel {
       }
     });
     
-    
-    add(tabbedPane, BorderLayout.CENTER);
+    contentPanel.add(tabbedPane, "TABS");
+    add(contentPanel, BorderLayout.CENTER);
+
+    // Show welcome panel initially
+    showWelcomePanel();
+  }
+
+  /**
+   * Creates the welcome panel shown when no files are open.
+   */
+  private JPanel createWelcomePanel() {
+    JPanel panel = new JPanel(new java.awt.GridBagLayout());
+    panel.setBackground(UIManager.getColor("Panel.background"));
+
+    java.awt.GridBagConstraints gbc = new java.awt.GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.insets = new java.awt.Insets(10, 10, 10, 10);
+    gbc.anchor = java.awt.GridBagConstraints.CENTER;
+
+    // Icon
+    JLabel iconLabel = new JLabel();
+    iconLabel.setIcon(IconLoader.getIcon("/icons/parquet_studio.svg", ParquetToolWindow.class));
+    panel.add(iconLabel, gbc);
+
+    // Title
+    gbc.gridy = 1;
+    JLabel titleLabel = new JLabel("Parquet Studio");
+    titleLabel.setFont(titleLabel.getFont().deriveFont(java.awt.Font.BOLD, 18f));
+    panel.add(titleLabel, gbc);
+
+    // Subtitle
+    gbc.gridy = 2;
+    JLabel subtitleLabel = new JLabel("Professional CRUD editor for Parquet files");
+    subtitleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    panel.add(subtitleLabel, gbc);
+
+    // Instructions
+    gbc.gridy = 3;
+    gbc.insets = new java.awt.Insets(20, 10, 5, 10);
+    JLabel instructionLabel = new JLabel("<html><center>Double-click a <b>.parquet</b> file to open it<br>or use the Open button above</center></html>");
+    instructionLabel.setHorizontalAlignment(SwingConstants.CENTER);
+    panel.add(instructionLabel, gbc);
+
+    // Open button
+    gbc.gridy = 4;
+    gbc.insets = new java.awt.Insets(15, 10, 10, 10);
+    JButton openFileButton = new JButton("Open Parquet File");
+    openFileButton.addActionListener(e -> openParquetFile());
+    panel.add(openFileButton, gbc);
+
+    // Tips
+    gbc.gridy = 5;
+    gbc.insets = new java.awt.Insets(20, 10, 10, 10);
+    JLabel tipsLabel = new JLabel("<html><center><small>Tip: Right-click on a tab to close it</small></center></html>");
+    tipsLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    panel.add(tipsLabel, gbc);
+
+    return panel;
+  }
+
+  /**
+   * Shows the welcome panel.
+   */
+  private void showWelcomePanel() {
+    java.awt.CardLayout cl = (java.awt.CardLayout) contentPanel.getLayout();
+    cl.show(contentPanel, "WELCOME");
+  }
+
+  /**
+   * Shows the tabs panel.
+   */
+  private void showTabsPanel() {
+    java.awt.CardLayout cl = (java.awt.CardLayout) contentPanel.getLayout();
+    cl.show(contentPanel, "TABS");
+  }
+
+  /**
+   * Updates the view based on whether there are open tabs.
+   */
+  private void updateView() {
+    if (tabbedPane.getTabCount() == 0) {
+      showWelcomePanel();
+    } else {
+      showTabsPanel();
+    }
   }
 
   private JPanel createToolbar() {
@@ -99,6 +190,7 @@ public class ParquetToolWindow extends JPanel {
 
     return toolbar;
   }
+
 
   private void openParquetFile() {
     JFileChooser fileChooser = new JFileChooser();
@@ -166,14 +258,24 @@ public class ParquetToolWindow extends JPanel {
                 String currentFilePath = currentFile.getCanonicalPath();
                 if (currentFilePath.equals(filePath)) {
                   // File already open, switch to that tab
-                  tabbedPane.setSelectedIndex(i);
+                  final int existingIndex = i;
+                  SwingUtilities.invokeLater(() -> {
+                    if (existingIndex < tabbedPane.getTabCount()) {
+                      tabbedPane.setSelectedIndex(existingIndex);
+                    }
+                  });
                   LOGGER.info("File already open, switching to existing tab: " + file.getName());
                   return;
                 }
               } catch (IOException e) {
                 // If canonical path fails, fall back to equals
-                if (currentFile.equals(file)) {
-                  tabbedPane.setSelectedIndex(i);
+                if (currentFile.getAbsolutePath().equals(file.getAbsolutePath())) {
+                  final int existingIndex = i;
+                  SwingUtilities.invokeLater(() -> {
+                    if (existingIndex < tabbedPane.getTabCount()) {
+                      tabbedPane.setSelectedIndex(existingIndex);
+                    }
+                  });
                   LOGGER.info("File already open, switching to existing tab: " + file.getName());
                   return;
                 }
@@ -194,53 +296,81 @@ public class ParquetToolWindow extends JPanel {
 
       // Add to tabbed pane (must be on EDT)
       SwingUtilities.invokeLater(() -> {
-        synchronized (ParquetToolWindow.class) {
-          // Double-check after loading (file might have been opened by another thread)
-          for (int i = 0; i < tabbedPane.getTabCount(); i++) {
-            Component component = tabbedPane.getComponentAt(i);
-            if (component instanceof ParquetEditorPanel) {
-              ParquetEditorPanel panel = (ParquetEditorPanel) component;
-              if (panel.hasFile()) {
-                File currentFile = panel.getCurrentFile();
-                if (currentFile != null) {
-                  try {
-                    String currentFilePath = currentFile.getCanonicalPath();
-                    if (currentFilePath.equals(filePath)) {
-                      // File was opened by another thread, just switch to it
-                      tabbedPane.setSelectedIndex(i);
-                      openingFiles.remove(filePath);
-                      LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
-                      return;
-                    }
-                  } catch (IOException e) {
-                    if (currentFile.equals(file)) {
-                      tabbedPane.setSelectedIndex(i);
-                      openingFiles.remove(filePath);
-                      LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
-                      return;
+        try {
+          synchronized (ParquetToolWindow.class) {
+            // Double-check after loading (file might have been opened by another thread)
+            for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+              Component component = tabbedPane.getComponentAt(i);
+              if (component instanceof ParquetEditorPanel) {
+                ParquetEditorPanel panel = (ParquetEditorPanel) component;
+                if (panel.hasFile()) {
+                  File currentFile = panel.getCurrentFile();
+                  if (currentFile != null) {
+                    try {
+                      String currentFilePath = currentFile.getCanonicalPath();
+                      if (currentFilePath.equals(filePath)) {
+                        // File was opened by another thread, just switch to it
+                        final int existingTabIndex = i;
+                        openingFiles.remove(filePath);
+                        showTabsPanel();
+                        // Defer selection to avoid layout recursion
+                        SwingUtilities.invokeLater(() -> {
+                          if (existingTabIndex < tabbedPane.getTabCount()) {
+                            tabbedPane.setSelectedIndex(existingTabIndex);
+                          }
+                        });
+                        LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
+                        return;
+                      }
+                    } catch (IOException e) {
+                      if (currentFile.getAbsolutePath().equals(file.getAbsolutePath())) {
+                        final int existingTabIndex = i;
+                        openingFiles.remove(filePath);
+                        showTabsPanel();
+                        // Defer selection to avoid layout recursion
+                        SwingUtilities.invokeLater(() -> {
+                          if (existingTabIndex < tabbedPane.getTabCount()) {
+                            tabbedPane.setSelectedIndex(existingTabIndex);
+                          }
+                        });
+                        LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
+                        return;
+                      }
                     }
                   }
                 }
               }
             }
-          }
-          
-          // Add to tabbed pane
-          String tabTitle = file.getName();
-          int tabIndex = tabbedPane.getTabCount();
-          // Add tab with title that includes close indicator
-          // Format: "filename [×]" where × is the close indicator
-          String tabTitleWithClose = tabTitle + "  ×";
-          tabbedPane.addTab(tabTitleWithClose, null, editorPanel, file.getAbsolutePath());
-          tabbedPane.setSelectedIndex(tabIndex);
-          
-          // Store mapping
-          panelToTabIndex.put(editorPanel, tabIndex);
-          
-          // Remove from opening set
-          openingFiles.remove(filePath);
 
-          LOGGER.info("Opened file in new tab: " + file.getName());
+            // Show tabs panel BEFORE adding the tab to prevent layout issues
+            showTabsPanel();
+
+            // Add to tabbed pane with title that includes close indicator
+            // Format: "filename  ×" where × is the close indicator
+            String tabTitle = file.getName();
+            String tabTitleWithClose = tabTitle + "  ×";
+            tabbedPane.addTab(tabTitleWithClose, null, editorPanel, file.getAbsolutePath());
+
+            final int tabIndex = tabbedPane.getTabCount() - 1;
+
+            // Store mapping
+            panelToTabIndex.put(editorPanel, tabIndex);
+
+            // Remove from opening set
+            openingFiles.remove(filePath);
+
+            LOGGER.info("Opened file in new tab: " + file.getName());
+
+            // Defer tab selection to avoid layout recursion issues
+            SwingUtilities.invokeLater(() -> {
+              if (tabIndex < tabbedPane.getTabCount()) {
+                tabbedPane.setSelectedIndex(tabIndex);
+              }
+            });
+          }
+        } catch (Exception ex) {
+          LOGGER.error("Error adding tab for file: " + file.getName(), ex);
+          openingFiles.remove(filePath);
         }
       });
     } catch (Exception e) {
@@ -272,19 +402,21 @@ public class ParquetToolWindow extends JPanel {
       // Remove tab
       tabbedPane.removeTabAt(tabIndex);
       
-      // Update tab components for remaining tabs (recreate to fix indices)
+      // Update tab components for remaining tabs (indices may have changed)
       updateTabComponents();
       
       // Update mappings for remaining tabs
       updateTabMappings();
       
+      // Update view (show welcome panel if no tabs left)
+      updateView();
+
       LOGGER.info("Closed tab: " + panel.getDisplayName());
     }
   }
 
   /**
-   * Updates tab components after tab removal to fix close button indices.
-   * No longer needed since we're using title-based approach.
+   * Updates tab titles after tab removal to ensure close indicator is present.
    */
   private void updateTabComponents() {
     // Update titles to include close indicator if not already present
