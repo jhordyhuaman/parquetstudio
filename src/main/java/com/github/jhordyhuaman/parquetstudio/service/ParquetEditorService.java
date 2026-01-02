@@ -107,6 +107,30 @@ public class ParquetEditorService {
   }
 
   /**
+   * Gets the column types from the current table model.
+   *
+   * @return list of column types, or null if not loaded
+   */
+  public List<String> getColumnTypes() {
+    if (tableModel != null) {
+      return tableModel.getColumnTypes();
+    }
+    return null;
+  }
+
+  /**
+   * Gets the column names from the current table model.
+   *
+   * @return list of column names, or null if not loaded
+   */
+  public List<String> getColumnNames() {
+    if (tableModel != null) {
+      return tableModel.getColumnNames();
+    }
+    return null;
+  }
+
+  /**
    * Gets the currently loaded schema file.
    *
    * @return the current schema file, or null if no file is loaded

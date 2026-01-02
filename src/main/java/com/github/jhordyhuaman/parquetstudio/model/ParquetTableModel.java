@@ -43,6 +43,24 @@ public class ParquetTableModel extends AbstractTableModel {
     }
   }
 
+  /**
+   * Gets the list of column names (without type info).
+   *
+   * @return list of column names
+   */
+  public List<String> getColumnNames() {
+    return new ArrayList<>(columnNames);
+  }
+
+  /**
+   * Gets the list of column types.
+   *
+   * @return list of column types
+   */
+  public List<String> getColumnTypes() {
+    return new ArrayList<>(columnTypes);
+  }
+
   @Override
   public int getRowCount() {
     return rows.size();

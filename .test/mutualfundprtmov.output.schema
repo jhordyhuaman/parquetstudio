@@ -1,0 +1,497 @@
+{
+  "namespace" : "PMOL",
+  "name" : "t_pmol_mutual_fund_prt_mov",
+  "doc" : "PMOL",
+  "database" : "master",
+  "storageZone" : "Masterdata",
+  "storageType" : "HDFS-Parquet",
+  "physicalPath" : "/data/master/pmol/data/t_pmol_mutual_fund_prt_mov",
+  "securityLevel" : "L2",
+  "objectVersion" : "1.0.0",
+  "partitions" : [ "cutoff_date" ],
+  "type" : "record",
+  "fields" : [ {
+    "name" : "cci_id",
+    "type" : "string",
+    "legacyName" : "cci_id",
+    "logicalFormat" : "ALPHANUMERIC(20)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "fund_id",
+    "type" : "string",
+    "legacyName" : "fund_id",
+    "logicalFormat" : "ALPHANUMERIC(4)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "data_date",
+    "type" : "date",
+    "legacyName" : "data_date",
+    "logicalFormat" : "DATE",
+    "format" : "yyyy-MM-dd",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_id",
+    "type" : "string",
+    "legacyName" : "transaction_id",
+    "logicalFormat" : "ALPHANUMERIC(10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "operation_branch_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "operation_branch_id",
+    "logicalFormat" : "ALPHANUMERIC(4)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "exempt_entries_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "exempt_entries_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "issue_currency_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "issue_currency_id",
+    "logicalFormat" : "ALPHANUMERIC(3)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_type_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "transaction_type_id",
+    "logicalFormat" : "ALPHANUMERIC(3)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "value_date",
+    "type" : [ "date", "null" ],
+    "legacyName" : "value_date",
+    "logicalFormat" : "DATE",
+    "format" : "yyyy-MM-dd",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "operation_payment_plan_mark_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "operation_payment_plan_mark_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "total_installments_number",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "total_installments_number",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "installments_total_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "installments_total_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "operation_actual_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "operation_actual_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "operation_net_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "operation_net_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "transaction_type",
+    "logicalFormat" : "ALPHANUMERIC(8)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "withholding_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "withholding_id",
+    "logicalFormat" : "ALPHANUMERIC(10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "origin_transaction_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "origin_transaction_id",
+    "logicalFormat" : "ALPHANUMERIC(10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "operation_reason_desc",
+    "type" : [ "string", "null" ],
+    "legacyName" : "operation_reason_desc",
+    "logicalFormat" : "ALPHANUMERIC(150)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_operation_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "transaction_operation_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "destination_account_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "destination_account_id",
+    "logicalFormat" : "ALPHANUMERIC(20)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "promoter_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "promoter_id",
+    "logicalFormat" : "ALPHANUMERIC(8)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "admin_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "admin_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "subscription_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "subscription_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "recovery_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "recovery_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transfer_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "transfer_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "subrogated_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "subrogated_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "intermediation_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "intermediation_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "custody_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "custody_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "translation_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "translation_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "sched_subscription_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "sched_subscription_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "scheduled_recovery_fee_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "scheduled_recovery_fee_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "payment_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "payment_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "source_branch_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "source_branch_id",
+    "logicalFormat" : "ALPHANUMERIC(4)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "atm_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "atm_id",
+    "logicalFormat" : "ALPHANUMERIC(8)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "terminal_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "terminal_id",
+    "logicalFormat" : "ALPHANUMERIC(4)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_time_date",
+    "type" : [ "string", "null" ],
+    "legacyName" : "transaction_time_date",
+    "logicalFormat" : "TIME",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "transaction_payment_method_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "transaction_payment_method_type",
+    "logicalFormat" : "ALPHANUMERIC(8)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "check_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "check_id",
+    "logicalFormat" : "ALPHANUMERIC(10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "check_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "check_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "charge_plan_account_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "charge_plan_account_id",
+    "logicalFormat" : "ALPHANUMERIC(20)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "account_status_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "account_status_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "avail_bal_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "avail_bal_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "journal_pointer_number",
+    "type" : [ "int32", "null" ],
+    "legacyName" : "journal_pointer_number",
+    "logicalFormat" : "NUMERIC LARGE",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : null
+  }, {
+    "name" : "internet_banking_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "internet_banking_type",
+    "logicalFormat" : "ALPHANUMERIC(8)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "source_entity_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "source_entity_id",
+    "logicalFormat" : "ALPHANUMERIC(5)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "last_transaction_date",
+    "type" : [ "date", "null" ],
+    "legacyName" : "last_transaction_date",
+    "logicalFormat" : "DATE",
+    "format" : "yyyy-MM-dd",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "last_change_hms_date",
+    "type" : [ "string", "null" ],
+    "legacyName" : "last_change_hms_date",
+    "logicalFormat" : "TIME",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "regis_last_operation_user_id",
+    "type" : [ "string", "null" ],
+    "legacyName" : "regis_last_operation_user_id",
+    "logicalFormat" : "ALPHANUMERIC(6)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "schedule_type",
+    "type" : [ "string", "null" ],
+    "legacyName" : "schedule_type",
+    "logicalFormat" : "ALPHANUMERIC(2)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "schedule_date",
+    "type" : [ "date", "null" ],
+    "legacyName" : "schedule_date",
+    "logicalFormat" : "DATE",
+    "format" : "yyyy-MM-dd",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "other_recovery_amount",
+    "type" : [ "decimal(23,10)", "null" ],
+    "legacyName" : "other_recovery_amount",
+    "logicalFormat" : "DECIMAL(23,10)",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "cutoff_date",
+    "type" : "date",
+    "legacyName" : "Calculated",
+    "logicalFormat" : "DATE",
+    "format" : "yyyy-MM-dd",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  }, {
+    "name" : "audtiminsert_date",
+    "type" : [ "timestamp", "null" ],
+    "legacyName" : "Calculated",
+    "logicalFormat" : "TIMESTAMP",
+    "format" : "yyyy-MM-dd HH:mm:ss.SSSSSS",
+    "deleted" : false,
+    "metadata" : false,
+    "locale" : "es-PE",
+    "default" : ""
+  } ]
+}

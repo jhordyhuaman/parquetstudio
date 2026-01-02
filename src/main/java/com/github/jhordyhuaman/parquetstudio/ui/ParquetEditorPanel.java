@@ -16,14 +16,18 @@ package com.github.jhordyhuaman.parquetstudio.ui;
 import com.github.jhordyhuaman.parquetstudio.Constants;
 import com.github.jhordyhuaman.parquetstudio.model.ParquetData;
 import com.github.jhordyhuaman.parquetstudio.model.ParquetTableModel;
+import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetEditorService;
+import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.table.JBTable;
 import java.awt.*;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.*;
@@ -59,6 +63,10 @@ public class ParquetEditorPanel extends JPanel {
   private JPanel containerPanel;
   private JPanel dataPanel;
   private JPanel schemaPanel;
+  private JPanel loadingPanel;
+  private JLabel loadingLabel;
+  private JLabel loadingFileInfoLabel;
+  private JProgressBar loadingProgressBar;
   private JButton goSchemaButton;
   private JButton goDataButton;
   private boolean showingPanelData = true;
@@ -67,6 +75,9 @@ public class ParquetEditorPanel extends JPanel {
   private JLabel strictModeJLabel;
   private JTextPane jsonTextPane;
   private TableRowSorter<TableModel> rowSorter;
+
+  // Track the file being loaded (before it's fully loaded into the service)
+  private File loadingFile;
 
   public ParquetEditorPanel() {
     this(true);
@@ -78,21 +89,23 @@ public class ParquetEditorPanel extends JPanel {
   }
 
   /**
-   * Gets the currently loaded file.
+   * Gets the currently loaded file or the file being loaded.
    *
-   * @return the current file, or null if no file is loaded
+   * @return the current file, or null if no file is loaded/loading
    */
   public File getCurrentFile() {
-    return editorService.getCurrentFile();
+    File currentFile = editorService.getCurrentFile();
+    // If service doesn't have a file yet, return the file being loaded
+    return currentFile != null ? currentFile : loadingFile;
   }
 
   /**
-   * Checks if a file is currently loaded.
+   * Checks if a file is currently loaded or being loaded.
    *
-   * @return true if a file is loaded, false otherwise
+   * @return true if a file is loaded or loading, false otherwise
    */
   public boolean hasFile() {
-    return editorService.hasFile();
+    return editorService.hasFile() || loadingFile != null;
   }
 
   /**
@@ -111,6 +124,10 @@ public class ParquetEditorPanel extends JPanel {
   private void initializeUI() {
     setLayout(new BorderLayout());
     containerPanel = new JPanel(new CardLayout());
+
+    // SECTION: Loading Panel
+    loadingPanel = createLoadingPanel();
+    containerPanel.add(loadingPanel, Constants.LOADING_PANEL);
 
     // SECTION: Data Panel
     dataPanel = new JPanel(new BorderLayout());
@@ -144,6 +161,100 @@ public class ParquetEditorPanel extends JPanel {
 
     add(containerPanel, BorderLayout.CENTER);
     add(statusLabel, BorderLayout.SOUTH);
+  }
+
+  /**
+   * Creates a loading panel with progress indicator.
+   */
+  private JPanel createLoadingPanel() {
+    JPanel panel = new JPanel(new GridBagLayout());
+    panel.setBackground(UIManager.getColor("Panel.background"));
+
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.insets = new Insets(10, 10, 10, 10);
+    gbc.anchor = GridBagConstraints.CENTER;
+
+    // Loading icon
+    JLabel iconLabel = new JLabel();
+    iconLabel.setIcon(UIManager.getIcon("OptionPane.informationIcon"));
+    panel.add(iconLabel, gbc);
+
+    // Loading message
+    gbc.gridy = 1;
+    loadingLabel = new JLabel(Constants.Message.LOADING_FILE);
+    loadingLabel.setFont(loadingLabel.getFont().deriveFont(Font.BOLD, 14f));
+    panel.add(loadingLabel, gbc);
+
+    // File info label
+    gbc.gridy = 2;
+    loadingFileInfoLabel = new JLabel("");
+    loadingFileInfoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    panel.add(loadingFileInfoLabel, gbc);
+
+    // Progress bar
+    gbc.gridy = 3;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    loadingProgressBar = new JProgressBar();
+    loadingProgressBar.setIndeterminate(true);
+    loadingProgressBar.setPreferredSize(new Dimension(300, 20));
+    loadingProgressBar.setStringPainted(true);
+    loadingProgressBar.setString("");
+    panel.add(loadingProgressBar, gbc);
+
+    // Additional info
+    gbc.gridy = 4;
+    gbc.fill = GridBagConstraints.NONE;
+    JLabel hintLabel = new JLabel("Large files may take longer to load");
+    hintLabel.setFont(hintLabel.getFont().deriveFont(Font.ITALIC, 11f));
+    hintLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    panel.add(hintLabel, gbc);
+
+    return panel;
+  }
+
+  /**
+   * Shows the loading panel with file information.
+   */
+  private void showLoadingPanel(File file) {
+    loadingLabel.setText(Constants.Message.LOADING_FILE);
+    loadingFileInfoLabel.setText(file.getName() + " (" + formatFileSize(file.length()) + ")");
+    loadingProgressBar.setString(Constants.Message.LOADING_READING_SCHEMA);
+    loadingProgressBar.setIndeterminate(true);
+
+    CardLayout cl = (CardLayout) containerPanel.getLayout();
+    cl.show(containerPanel, Constants.LOADING_PANEL);
+    showingPanelData = false;
+  }
+
+  /**
+   * Updates the loading status message.
+   */
+  private void updateLoadingStatus(String message) {
+    SwingUtilities.invokeLater(() -> {
+      loadingProgressBar.setString(message);
+      statusLabel.setText(message);
+    });
+  }
+
+  /**
+   * Shows the data panel after loading.
+   */
+  private void showDataPanel() {
+    CardLayout cl = (CardLayout) containerPanel.getLayout();
+    cl.show(containerPanel, Constants.DATA_PANEL);
+    showingPanelData = true;
+  }
+
+  /**
+   * Formats file size in human-readable format.
+   */
+  private String formatFileSize(long bytes) {
+    if (bytes < 1024) return bytes + " B";
+    int exp = (int) (Math.log(bytes) / Math.log(1024));
+    String pre = "KMGTPE".charAt(exp - 1) + "";
+    return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
   }
 
   private JPanel createToolbar() {
@@ -199,10 +310,16 @@ public class ParquetEditorPanel extends JPanel {
     saveAsButton.setToolTipText("Save As...");
     saveAsButton.addActionListener(e -> saveAsParquet());
 
+    // Validate Schema button
+    JButton validateSchemaButton = new JButton("Validate Schema");
+    validateSchemaButton.setToolTipText("Validate Parquet types against a schema file");
+    validateSchemaButton.addActionListener(e -> validateSchemaAgainstFile());
+
     goSchemaButton = new JButton("View Schema");
     goSchemaButton.addActionListener(e -> changePanel() );
 
     toolbar.add(saveAsButton);
+    toolbar.add(validateSchemaButton);
     toolbar.add(goSchemaButton);
 
     updateButtonStates(false);
@@ -397,18 +514,95 @@ public class ParquetEditorPanel extends JPanel {
   }
 
   /**
+   * Validates file before loading.
+   * @return true if file is valid, false otherwise
+   */
+  private boolean validateFileForLoading(File file) {
+    // Check if file exists
+    if (!file.exists()) {
+      Messages.showErrorDialog(
+          String.format(Constants.Message.ERROR_FILE_NOT_FOUND, file.getName()),
+          "File Not Found");
+      return false;
+    }
+
+    // Check if file is readable
+    if (!file.canRead()) {
+      Messages.showErrorDialog(
+          String.format(Constants.Message.ERROR_FILE_NOT_READABLE, file.getName()),
+          "Cannot Read File");
+      return false;
+    }
+
+    // Check file size
+    long fileSize = file.length();
+
+    if (fileSize > Constants.FILE_SIZE_MAX_THRESHOLD) {
+      Messages.showErrorDialog(Constants.Message.FILE_TOO_LARGE, "File Too Large");
+      return false;
+    }
+
+    if (fileSize > Constants.FILE_SIZE_LARGE_THRESHOLD) {
+      int result = Messages.showYesNoDialog(
+          String.format(Constants.Message.FILE_LARGE_WARNING, formatFileSize(fileSize)) +
+          "\n\nDo you want to continue loading?",
+          "Large File Warning",
+          Messages.getWarningIcon());
+      return result == Messages.YES;
+    }
+
+    return true;
+  }
+
+  /**
    * Loads a Parquet file into this editor.
    *
    * @param file the Parquet file to load
    */
   public void loadParquetFile(File file) {
+    // Track the file being loaded immediately
+    this.loadingFile = file;
+
+    // Validate file first
+    if (!validateFileForLoading(file)) {
+      statusLabel.setText("File loading cancelled.");
+      this.loadingFile = null;
+      return;
+    }
+
+    // Show loading panel
+    showLoadingPanel(file);
+
+    // Calculate estimated load time based on file size
+    long fileSize = file.length();
+    String sizeInfo = formatFileSize(fileSize);
+
     try {
-      statusLabel.setText("Loading file...");
-      SwingWorker<ParquetData, Void> worker =
-          new SwingWorker<ParquetData, Void>() {
+      SwingWorker<ParquetData, String> worker =
+          new SwingWorker<ParquetData, String>() {
             @Override
             protected ParquetData doInBackground() throws Exception {
-              return editorService.loadParquetFile(file);
+              // Step 1: Reading schema
+              publish(Constants.Message.LOADING_READING_SCHEMA);
+              Thread.sleep(100); // Brief pause for UI update
+
+              // Step 2: Reading data
+              publish(Constants.Message.LOADING_READING_DATA);
+              ParquetData data = editorService.loadParquetFile(file);
+
+              // Step 3: Preparing table
+              publish(Constants.Message.LOADING_PREPARING_TABLE);
+
+              return data;
+            }
+
+            @Override
+            protected void process(java.util.List<String> chunks) {
+              // Update loading status with the latest message
+              if (!chunks.isEmpty()) {
+                String latestMessage = chunks.get(chunks.size() - 1);
+                updateLoadingStatus(latestMessage);
+              }
             }
 
             @Override
@@ -425,24 +619,61 @@ public class ParquetEditorPanel extends JPanel {
                 dataTable.setRowSorter(rowSorter);
 
                 updateButtonStates(true);
+
+                // Switch to data panel
+                showDataPanel();
                 updateStatusLabel();
 
-                LOGGER.info("Loaded: " + file.getName() + " (" + data.getRows().size() + " rows)");
+                int rowCount = data.getRows().size();
+                int colCount = data.getColumnNames().size();
+                LOGGER.info("Loaded: " + file.getName() + " (" + rowCount + " rows, " + colCount + " columns)");
+
+                // Show success message in status
+                statusLabel.setText(String.format("Loaded: %s | %d rows, %d columns | Size: %s",
+                    file.getName(), rowCount, colCount, sizeInfo));
+
                 writeOriginalSchemaInPanel(data.getColumnNames(), data.getColumnTypes());
                 resetSchemaComponents();
+
+                // Clear loadingFile since service now has the file
+                loadingFile = null;
+
+              } catch (java.util.concurrent.CancellationException e) {
+                LOGGER.info("Loading cancelled: " + file.getName());
+                showDataPanel();
+                statusLabel.setText("Loading cancelled.");
+                loadingFile = null;
+
               } catch (Exception e) {
                 LOGGER.error("Error loading Parquet file", e);
+
+                // Show error panel
+                showDataPanel();
+
+                // Extract root cause message
+                String errorMessage = e.getMessage();
+                if (e.getCause() != null) {
+                  errorMessage = e.getCause().getMessage();
+                }
+
                 Messages.showErrorDialog(
-                    "Error loading Parquet file: " + e.getMessage(), "Error");
-                statusLabel.setText("Error loading file.");
+                    String.format(Constants.Message.ERROR_LOADING_FILE, errorMessage),
+                    "Error Loading File");
+                statusLabel.setText("Error loading file: " + file.getName());
+                loadingFile = null;
               }
             }
           };
       worker.execute();
+
     } catch (Exception e) {
       LOGGER.error("Error loading Parquet file", e);
-      Messages.showErrorDialog("Error loading Parquet file: " + e.getMessage(), "Error");
+      showDataPanel();
+      Messages.showErrorDialog(
+          String.format(Constants.Message.ERROR_LOADING_FILE, e.getMessage()),
+          "Error");
       statusLabel.setText("Error loading file.");
+      loadingFile = null;
     }
   }
 
@@ -630,6 +861,101 @@ public class ParquetEditorPanel extends JPanel {
         LOGGER.error("Error deleting rows", e);
         Messages.showErrorDialog("Error deleting rows: " + e.getMessage(), "Error");
       }
+    }
+  }
+
+  /**
+   * Validates the current Parquet file's types against a schema file.
+   */
+  private void validateSchemaAgainstFile() {
+    if (tableModel == null) {
+      Messages.showWarningDialog("Please load a Parquet file first.", "No File Loaded");
+      return;
+    }
+
+    // Open file chooser for schema file
+    JFileChooser fileChooser = new JFileChooser();
+    fileChooser.setDialogTitle("Select Schema File to Validate");
+
+    File currentFile = editorService.getCurrentFile();
+    if (currentFile != null) {
+      fileChooser.setCurrentDirectory(currentFile.getParentFile());
+    }
+
+    fileChooser.setFileFilter(new FileFilter() {
+      @Override
+      public boolean accept(File f) {
+        if (f.isDirectory()) return true;
+        String name = f.getName().toLowerCase();
+        return name.endsWith(".json") || name.endsWith(".schema");
+      }
+
+      @Override
+      public String getDescription() {
+        return "Schema Files (*.json, *.schema)";
+      }
+    });
+
+    int result = fileChooser.showOpenDialog(this);
+    if (result != JFileChooser.APPROVE_OPTION) {
+      return;
+    }
+
+    File schemaFile = fileChooser.getSelectedFile();
+
+    try {
+      // Get column names and types from the current Parquet data
+      List<String> columnNames = new ArrayList<>();
+      List<String> columnTypes = new ArrayList<>();
+
+      for (int i = 0; i < tableModel.getColumnCount(); i++) {
+        String colName = tableModel.getColumnName(i);
+        // Extract just the name if it includes type info
+        if (colName.contains(" (")) {
+          String type = colName.substring(colName.indexOf(" (") + 2, colName.lastIndexOf(")"));
+          colName = colName.substring(0, colName.indexOf(" ("));
+          columnTypes.add(type);
+        } else {
+          columnTypes.add("UNKNOWN");
+        }
+        columnNames.add(colName);
+      }
+
+      // If types weren't in column names, get them from the service
+      if (columnTypes.stream().allMatch(t -> t.equals("UNKNOWN"))) {
+        columnTypes.clear();
+        List<String> serviceTypes = editorService.getColumnTypes();
+        if (serviceTypes != null) {
+          columnTypes.addAll(serviceTypes);
+        }
+        // Pad with UNKNOWN if needed
+        while (columnTypes.size() < columnNames.size()) {
+          columnTypes.add("UNKNOWN");
+        }
+      }
+
+      // Perform validation
+      SchemaValidationService validationService = new SchemaValidationService();
+      SchemaValidationResult validationResult = validationService.validate(schemaFile, columnNames, columnTypes);
+
+      // Show results dialog
+      SchemaValidationDialog dialog = new SchemaValidationDialog(validationResult, schemaFile.getName());
+      dialog.show();
+
+      // Log result
+      if (validationResult.isFullyValid()) {
+        LOGGER.info("Schema validation passed for: " + schemaFile.getName());
+      } else {
+        LOGGER.warn("Schema validation found issues: " + validationResult.getErrorCount() + " errors, " +
+                    validationResult.getWarningCount() + " warnings");
+      }
+
+    } catch (Exception e) {
+      LOGGER.error("Error validating schema", e);
+      Messages.showErrorDialog(
+          "Error validating schema: " + e.getMessage(),
+          "Validation Error"
+      );
     }
   }
 
