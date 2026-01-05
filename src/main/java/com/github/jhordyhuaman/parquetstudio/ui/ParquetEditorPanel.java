@@ -904,42 +904,30 @@ public class ParquetEditorPanel extends JPanel {
     File schemaFile = fileChooser.getSelectedFile();
 
     try {
-      // Get column names and types from the current Parquet data
-      List<String> columnNames = new ArrayList<>();
-      List<String> columnTypes = new ArrayList<>();
+      // Get column names and types from the table model (clean names, not HTML formatted)
+      List<String> columnNames = tableModel.getColumnNames();
+      List<String> columnTypes = tableModel.getColumnTypes();
 
-      for (int i = 0; i < tableModel.getColumnCount(); i++) {
-        String colName = tableModel.getColumnName(i);
-        // Extract just the name if it includes type info
-        if (colName.contains(" (")) {
-          String type = colName.substring(colName.indexOf(" (") + 2, colName.lastIndexOf(")"));
-          colName = colName.substring(0, colName.indexOf(" ("));
-          columnTypes.add(type);
-        } else {
-          columnTypes.add("UNKNOWN");
-        }
-        columnNames.add(colName);
-      }
-
-      // If types weren't in column names, get them from the service
-      if (columnTypes.stream().allMatch(t -> t.equals("UNKNOWN"))) {
-        columnTypes.clear();
-        List<String> serviceTypes = editorService.getColumnTypes();
-        if (serviceTypes != null) {
-          columnTypes.addAll(serviceTypes);
-        }
-        // Pad with UNKNOWN if needed
-        while (columnTypes.size() < columnNames.size()) {
-          columnTypes.add("UNKNOWN");
-        }
-      }
+      LOGGER.info("Validating schema with columns: " + columnNames);
+      LOGGER.info("Column types: " + columnTypes);
 
       // Perform validation
       SchemaValidationService validationService = new SchemaValidationService();
       SchemaValidationResult validationResult = validationService.validate(schemaFile, columnNames, columnTypes);
 
-      // Show results dialog
-      SchemaValidationDialog dialog = new SchemaValidationDialog(validationResult, schemaFile.getName());
+      // Create callback for fix action
+      final File finalSchemaFile = schemaFile;
+      Runnable fixCallback = () -> {
+        fixTypesWithSchema(finalSchemaFile, validationResult);
+      };
+
+      // Show results dialog with fix callback
+      SchemaValidationDialog dialog = new SchemaValidationDialog(
+          validationResult,
+          schemaFile.getName(),
+          schemaFile,
+          fixCallback
+      );
       dialog.show();
 
       // Log result
@@ -957,6 +945,117 @@ public class ParquetEditorPanel extends JPanel {
           "Validation Error"
       );
     }
+  }
+
+  /**
+   * Fixes type mismatches by saving the Parquet file with the schema types.
+   * Overwrites the original file.
+   */
+  private void fixTypesWithSchema(File schemaFile, SchemaValidationResult validationResult) {
+    LOGGER.info("=== FIX TYPES WITH SCHEMA STARTED ===");
+    LOGGER.info("Schema file: " + schemaFile.getAbsolutePath());
+    LOGGER.info("Type mismatches count: " + validationResult.getTypeMismatchColumns().size());
+    LOGGER.info("Missing columns count: " + validationResult.getMissingInParquet().size());
+
+    try {
+      File currentFile = editorService.getCurrentFile();
+      if (currentFile == null) {
+        LOGGER.error("No current file loaded");
+        Messages.showErrorDialog("No Parquet file is currently loaded.", "Error");
+        return;
+      }
+
+      LOGGER.info("Current Parquet file: " + currentFile.getAbsolutePath());
+
+      // Confirm overwrite
+      int confirm = Messages.showYesNoDialog(
+          "This will overwrite the original file:\n" + currentFile.getAbsolutePath() +
+          "\n\nThe following columns will be converted to match the schema:\n" +
+          formatMismatchList(validationResult) +
+          "\n\nDo you want to continue?",
+          "Confirm Fix Types",
+          Messages.getQuestionIcon()
+      );
+
+      if (confirm != Messages.YES) {
+        LOGGER.info("User cancelled fix operation");
+        return;
+      }
+
+      LOGGER.info("User confirmed fix operation");
+
+      // Load the schema and save with type conversion
+      LOGGER.info("Setting schema file in editor service...");
+      editorService.setSchemaFile(schemaFile);
+
+      // Get table data
+      List<String> columnNames = tableModel.getColumnNames();
+      LOGGER.info("Column names from table model: " + columnNames);
+      LOGGER.info("Column count: " + columnNames.size());
+
+      List<List<Object>> rows = new ArrayList<>();
+      for (int i = 0; i < tableModel.getRowCount(); i++) {
+        List<Object> row = new ArrayList<>();
+        for (int j = 0; j < tableModel.getColumnCount(); j++) {
+          row.add(tableModel.getValueAt(i, j));
+        }
+        rows.add(row);
+      }
+      LOGGER.info("Row count: " + rows.size());
+
+      // Save to original path with schema types
+      LOGGER.info("Calling saveParquetFileWithSchema...");
+      editorService.saveParquetFileWithSchema(currentFile, columnNames, rows);
+      LOGGER.info("saveParquetFileWithSchema completed successfully");
+
+      Messages.showInfoMessage(
+          "File saved successfully with corrected types:\n" + currentFile.getAbsolutePath(),
+          "Fix Complete"
+      );
+
+      LOGGER.info("Fixed types and saved file: " + currentFile.getAbsolutePath());
+
+      // Reload the file to show updated types
+      LOGGER.info("Reloading file to show updated types...");
+      loadParquetFile(currentFile);
+      LOGGER.info("=== FIX TYPES WITH SCHEMA COMPLETED ===");
+
+    } catch (Exception e) {
+      LOGGER.error("Error fixing types: " + e.getMessage(), e);
+      Messages.showErrorDialog(
+          "Error fixing types: " + e.getMessage(),
+          "Fix Error"
+      );
+    }
+  }
+
+  /**
+   * Formats the list of issues (type mismatches and missing columns) for display.
+   */
+  private String formatMismatchList(SchemaValidationResult result) {
+    StringBuilder sb = new StringBuilder();
+
+    // Type mismatches
+    if (!result.getTypeMismatchColumns().isEmpty()) {
+      sb.append("Type conversions:\n");
+      for (SchemaValidationResult.ColumnValidation col : result.getTypeMismatchColumns()) {
+        sb.append("  • ").append(col.getColumnName())
+          .append(": ").append(col.getActualType())
+          .append(" → ").append(col.getExpectedType())
+          .append("\n");
+      }
+    }
+
+    // Missing columns (will be added with null values)
+    if (!result.getMissingInParquet().isEmpty()) {
+      if (sb.length() > 0) sb.append("\n");
+      sb.append("Columns to add (with null values):\n");
+      for (String col : result.getMissingInParquet()) {
+        sb.append("  • ").append(col).append("\n");
+      }
+    }
+
+    return sb.toString();
   }
 
   private void saveAsParquet() {

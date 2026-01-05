@@ -258,6 +258,58 @@ public class ParquetEditorService {
   }
 
   /**
+   * Saves the Parquet file using the types defined in the schema file.
+   * This method loads the schema, applies type conversions, and saves the file.
+   *
+   * @param outputFile the file to save to
+   * @param columnNames the column names
+   * @param rows the data rows
+   * @throws Exception if saving fails
+   */
+  public void saveParquetFileWithSchema(File outputFile, List<String> columnNames, List<List<Object>> rows) throws Exception {
+    LOGGER.info("=== saveParquetFileWithSchema START ===");
+    LOGGER.info("Output file: " + outputFile.getAbsolutePath());
+    LOGGER.info("Column names: " + columnNames);
+    LOGGER.info("Row count: " + rows.size());
+
+    validateDataLoaded();
+
+    File schemaFile = this.dataSchemaService.schemaFile;
+    if (schemaFile == null) {
+      LOGGER.error("No schema file loaded!");
+      throw new IllegalStateException("No schema file loaded. Call setSchemaFile first.");
+    }
+    LOGGER.info("Schema file: " + schemaFile.getAbsolutePath());
+
+    // Create ParquetData with current data
+    LOGGER.info("Creating ParquetData from table model...");
+    ParquetData dataClone = new ParquetData(tableModel.toParquetData());
+    LOGGER.info("ParquetData created. Columns: " + dataClone.getColumnNames());
+    LOGGER.info("ParquetData types BEFORE conversion: " + dataClone.getColumnTypes());
+
+    // Initialize original schema structure from current Parquet data
+    // This is needed for the transform to work correctly
+    LOGGER.info("Initializing original schema from current data...");
+    this.dataSchemaService.initializeOriginalSchema(dataClone.getColumnNames(), dataClone.getColumnTypes());
+
+    // Load schema structure from file
+    LOGGER.info("Loading schema structure from file...");
+    SchemaStructure schemaStructure = this.dataSchemaService.loadSchemaFromFile(schemaFile);
+    LOGGER.info("Schema structure loaded. Fields count: " + (schemaStructure != null && schemaStructure.fields != null ? schemaStructure.fields.size() : "null"));
+
+    // Apply type conversions based on schema
+    LOGGER.info("Applying type conversions...");
+    this.dataSchemaService.applyConvertTypes(dataClone, schemaStructure);
+    LOGGER.info("ParquetData types AFTER conversion: " + dataClone.getColumnTypes());
+
+    // Save the file
+    LOGGER.info("Saving Parquet file...");
+    duckDBService.saveParquet(outputFile, dataClone);
+    LOGGER.info("=== saveParquetFileWithSchema COMPLETED ===");
+    LOGGER.info("Saved Parquet file with schema types: " + outputFile.getAbsolutePath());
+  }
+
+  /**
    * Gets the row count from the table model.
    *
    * @return the number of rows, or 0 if no data is loaded

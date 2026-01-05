@@ -19,10 +19,22 @@ public class SchemaItem {
     public String equivalentType(String type){
         if(type == null) return "string";
 
-        return switch (type.toLowerCase()) {
-            case "timestamp_millis" -> "timestamp";
-            case "int32" -> "integer";
-            case "int64" -> "bigint";
+        String lowerType = type.toLowerCase().trim();
+
+        // Handle decimal types - preserve precision
+        if (lowerType.startsWith("decimal")) {
+            return type; // Keep as decimal(23,10) etc.
+        }
+
+        return switch (lowerType) {
+            case "timestamp_millis", "timestamp_micros" -> "timestamp";
+            case "int32", "int", "integer" -> "integer";
+            case "int64", "long" -> "bigint";
+            case "float32", "float" -> "float";
+            case "float64", "double" -> "double";
+            case "bool", "boolean" -> "boolean";
+            case "utf8", "text" -> "string";
+            case "bytes", "binary" -> "binary";
             default -> type;
         };
     }

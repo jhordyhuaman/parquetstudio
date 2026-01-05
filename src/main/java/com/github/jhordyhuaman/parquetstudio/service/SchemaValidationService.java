@@ -35,15 +35,22 @@ public class SchemaValidationService {
     private static final Map<String, String> TYPE_NORMALIZATION = new HashMap<>();
 
     static {
-        // String types
+        // String types - all variations map to STRING
         TYPE_NORMALIZATION.put("string", "STRING");
         TYPE_NORMALIZATION.put("varchar", "STRING");
         TYPE_NORMALIZATION.put("utf8", "STRING");
+        TYPE_NORMALIZATION.put("text", "STRING");
+        TYPE_NORMALIZATION.put("char", "STRING");
+        TYPE_NORMALIZATION.put("alphanumeric", "STRING");
 
         // Integer types
         TYPE_NORMALIZATION.put("int", "INTEGER");
         TYPE_NORMALIZATION.put("int32", "INTEGER");
         TYPE_NORMALIZATION.put("integer", "INTEGER");
+        TYPE_NORMALIZATION.put("smallint", "INTEGER");
+        TYPE_NORMALIZATION.put("tinyint", "INTEGER");
+
+        // Big Integer types
         TYPE_NORMALIZATION.put("bigint", "BIGINT");
         TYPE_NORMALIZATION.put("int64", "BIGINT");
         TYPE_NORMALIZATION.put("long", "BIGINT");
@@ -51,10 +58,12 @@ public class SchemaValidationService {
         // Decimal types
         TYPE_NORMALIZATION.put("decimal", "DECIMAL");
         TYPE_NORMALIZATION.put("numeric", "DECIMAL");
+        TYPE_NORMALIZATION.put("number", "DECIMAL");
 
         // Float types
         TYPE_NORMALIZATION.put("float", "FLOAT");
         TYPE_NORMALIZATION.put("float32", "FLOAT");
+        TYPE_NORMALIZATION.put("real", "FLOAT");
         TYPE_NORMALIZATION.put("double", "DOUBLE");
         TYPE_NORMALIZATION.put("float64", "DOUBLE");
 
@@ -63,6 +72,7 @@ public class SchemaValidationService {
         TYPE_NORMALIZATION.put("timestamp", "TIMESTAMP");
         TYPE_NORMALIZATION.put("timestamp_millis", "TIMESTAMP");
         TYPE_NORMALIZATION.put("timestamp_micros", "TIMESTAMP");
+        TYPE_NORMALIZATION.put("datetime", "TIMESTAMP");
         TYPE_NORMALIZATION.put("time", "TIME");
 
         // Boolean
@@ -72,6 +82,7 @@ public class SchemaValidationService {
         // Binary
         TYPE_NORMALIZATION.put("binary", "BINARY");
         TYPE_NORMALIZATION.put("bytes", "BINARY");
+        TYPE_NORMALIZATION.put("blob", "BINARY");
     }
 
     /**
@@ -192,24 +203,32 @@ public class SchemaValidationService {
         String normalizedSchema = normalizeType(schemaType);
         String normalizedParquet = normalizeType(parquetType);
 
+        LOGGER.info("Comparing types: schema='" + schemaType + "' (normalized=" + normalizedSchema +
+                   ") vs parquet='" + parquetType + "' (normalized=" + normalizedParquet + ")");
+
         // Direct match
         if (normalizedSchema.equals(normalizedParquet)) {
+            LOGGER.info("  -> MATCH (direct)");
             return true;
         }
 
         // Special case: DECIMAL with precision/scale
         if (normalizedSchema.equals("DECIMAL") && normalizedParquet.startsWith("DECIMAL")) {
+            LOGGER.info("  -> MATCH (decimal compatible)");
             return true;
         }
         if (normalizedParquet.equals("DECIMAL") && normalizedSchema.startsWith("DECIMAL")) {
+            LOGGER.info("  -> MATCH (decimal compatible)");
             return true;
         }
 
         // Special case: both are decimal with different precision
         if (normalizedSchema.startsWith("DECIMAL") && normalizedParquet.startsWith("DECIMAL")) {
+            LOGGER.info("  -> MATCH (both decimal)");
             return true; // Consider all decimals compatible
         }
 
+        LOGGER.info("  -> NO MATCH");
         return false;
     }
 

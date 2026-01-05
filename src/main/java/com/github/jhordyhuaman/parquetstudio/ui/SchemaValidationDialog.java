@@ -18,12 +18,14 @@ import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult.Column
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBScrollPane;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.io.File;
 import java.util.List;
 
 /**
@@ -33,13 +35,54 @@ public class SchemaValidationDialog extends DialogWrapper {
 
     private final SchemaValidationResult result;
     private final String schemaFileName;
+    private final File schemaFile;
+    private final Runnable onFixCallback;
+    private boolean fixRequested = false;
 
-    public SchemaValidationDialog(SchemaValidationResult result, String schemaFileName) {
+    public SchemaValidationDialog(SchemaValidationResult result, String schemaFileName, File schemaFile, Runnable onFixCallback) {
         super(true);
         this.result = result;
         this.schemaFileName = schemaFileName;
+        this.schemaFile = schemaFile;
+        this.onFixCallback = onFixCallback;
         setTitle("Schema Validation Results");
+        setOKButtonText("Close");
         init();
+    }
+
+    /**
+     * Returns whether the user requested to fix the issues.
+     */
+    public boolean isFixRequested() {
+        return fixRequested;
+    }
+
+    /**
+     * Gets the schema file used for validation.
+     */
+    public File getSchemaFile() {
+        return schemaFile;
+    }
+
+    @Override
+    protected Action @NotNull [] createActions() {
+        // If there are any issues (type mismatches OR missing columns), add a "Fix" button
+        boolean hasIssues = !result.getTypeMismatchColumns().isEmpty() || !result.getMissingInParquet().isEmpty();
+
+        if (hasIssues) {
+            Action fixAction = new DialogWrapperAction("Solucionar") {
+                @Override
+                protected void doAction(java.awt.event.ActionEvent e) {
+                    fixRequested = true;
+                    if (onFixCallback != null) {
+                        onFixCallback.run();
+                    }
+                    close(OK_EXIT_CODE);
+                }
+            };
+            return new Action[]{fixAction, getOKAction()};
+        }
+        return super.createActions();
     }
 
     @Override

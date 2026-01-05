@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-01-05
+
+### Added
+- **Schema Validation** - New "Validate Schema" button to compare Parquet file types against a JSON schema file
+- **Fix Type Mismatches** - "Solucionar" button to automatically convert columns to match expected schema types
+- **Type Conversion** - Automatic conversion of VARCHAR to DECIMAL, INTEGER, DATE, etc. when fixing schema mismatches
+
+### Fixed
+- **DECIMAL Type Preservation** - Fixed critical bug where DECIMAL(x,y) types were incorrectly read as VARCHAR when loading Parquet files
+- **Schema Type Normalization** - Improved type normalization to properly handle decimal, timestamp, and other complex types
+
+### Improved
+- **Detailed Logging** - Added comprehensive logging for schema validation and type conversion debugging
+- **Validation Results Dialog** - Shows detailed breakdown of valid columns, type mismatches, missing columns, and extra columns
+
+[1.5.0]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.5.0
+
 ## [1.4.1] - 2025-01-02
 
 ### Fixed
