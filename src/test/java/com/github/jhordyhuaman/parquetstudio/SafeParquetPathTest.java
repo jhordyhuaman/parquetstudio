@@ -73,11 +73,11 @@ class SafeParquetPathTest {
   }
 
   @Test
-  void writeThenMoveWritesDirectlyWhenSafe() throws Exception {
+  void writeThenMoveWritesViaTempEvenWhenSafe() throws Exception {
     java.io.File target = tempDir.resolve("out.parquet").toFile();
     SafeParquetPath.writeThenMove(target,
         f -> {
-          assertThat(f).isEqualTo(target);
+          assertThat(f).isNotEqualTo(target);
           java.nio.file.Files.writeString(f.toPath(), "direct");
         });
     assertThat(java.nio.file.Files.readString(target.toPath())).isEqualTo("direct");

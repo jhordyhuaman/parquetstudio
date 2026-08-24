@@ -54,12 +54,12 @@ public final class SafeParquetPath {
     return !original.equals(readable);
   }
 
+  /**
+   * Always writes to a temp file first, then atomically moves it onto {@code target}.
+   * This ensures a mid-write failure never corrupts or destroys the original file.
+   */
   public static void writeThenMove(java.io.File target, IoConsumer<java.io.File> writer)
       throws Exception {
-    if (!needsSafeCopy(target.getAbsolutePath(), isRunningOnWindows())) {
-      writer.accept(target);
-      return;
-    }
     java.nio.file.Path temp =
         java.nio.file.Files.createTempFile("parquetstudio-save-", ".parquet");
     try {

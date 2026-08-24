@@ -10,17 +10,12 @@ public class Constants {
     public final static long FILE_SIZE_LARGE_THRESHOLD = 500 * 1024 * 1024; // 500 MB
     public final static long FILE_SIZE_MAX_THRESHOLD = 1024 * 1024 * 1024L; // 1 GB
 
-    // Retry configuration
-    public final static int MAX_OPEN_RETRIES = 3;
-    public final static int RETRY_DELAY_MS = 500;
-
     public static class Message {
         public final static String SCHEMA_AND_PARQUET_NOT_SAME_COLUMNS = "The schema no haven't the same number of fields that the parquet.";
         public final static String SCHEMA_AND_PARQUET_NOT_SAME_COLUMNS_2 = "<html><span style='color:yellow;'>⚠</span> " + SCHEMA_AND_PARQUET_NOT_SAME_COLUMNS + "</html>";
 
         // Loading messages
         public final static String LOADING_FILE = "Loading file...";
-        public final static String LOADING_INITIALIZING = "Initializing Parquet Studio...";
         public final static String OPENED_IN_TOOL_WINDOW = "This file is open in the Parquet Studio tool window";
         public final static String LOADING_READING_SCHEMA = "Reading schema...";
         public final static String LOADING_READING_DATA = "Reading data...";

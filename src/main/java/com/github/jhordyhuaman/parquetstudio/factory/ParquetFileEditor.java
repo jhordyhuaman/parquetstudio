@@ -146,6 +146,9 @@ public class ParquetFileEditor extends UserDataHolderBase implements FileEditor 
         if (panel == null) {
           // Factory runs during activate(); content not created yet on this EDT pass.
           ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) {
+              return;
+            }
             ParquetToolWindow retryPanel =
                 ParquetStudioWindowService.getInstance(project).getPanel();
             if (retryPanel != null) {
