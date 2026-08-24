@@ -62,5 +62,16 @@ class ParquetToolWindowTest {
     assertThat(toolWindow.getSelectedTabIndex()).isEqualTo(-1);
     assertThat(toolWindow.getEditorPanelAt(0)).isNull();
   }
+
+  @Test
+  void openingSameFileTwiceCreatesOneTab() throws Exception {
+    File fixture = new File("src/test/resources/parquet/logical_date.parquet");
+    javax.swing.SwingUtilities.invokeAndWait(() -> {
+      toolWindow.openFileInTab(fixture);
+      toolWindow.openFileInTab(fixture);
+    });
+    javax.swing.SwingUtilities.invokeAndWait(() -> {});
+    assertThat(toolWindow.getTabCount()).isEqualTo(1);
+  }
 }
 

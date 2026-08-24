@@ -108,6 +108,14 @@ public class ParquetEditorPanel extends JPanel {
     return editorService.hasFile() || loadingFile != null;
   }
 
+  /** Returns the loaded file, or the file currently being loaded, or null. */
+  public File getLoadingOrCurrentFile() {
+    if (hasFile()) {
+      return getCurrentFile();
+    }
+    return loadingFile;
+  }
+
   /**
    * Gets the display name for this editor (typically the file name).
    *
