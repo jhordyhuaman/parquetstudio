@@ -165,5 +165,34 @@ class DuckDBParquetServiceTest {
     assertThat(data.getRows()).isEmpty();
     assertThat(data.getColumnNames()).hasSize(1);
   }
+
+  @TempDir
+  java.nio.file.Path safePathTempDir;
+
+  @Test
+  void loadsParquetFileWhoseNameContainsGlobCharacters() throws Exception {
+    java.io.File source = new java.io.File("src/test/resources/parquet/logical_date.parquet");
+    java.io.File globNamed = safePathTempDir.resolve("copia [1].parquet").toFile();
+    java.nio.file.Files.copy(source.toPath(), globNamed.toPath());
+
+    ParquetData data = new DuckDBParquetService().loadParquet(globNamed);
+
+    assertThat(data.getRows()).isNotEmpty();
+    assertThat(data.getColumnNames()).isNotEmpty();
+  }
+
+  @Test
+  void savesParquetFileWhoseNameContainsGlobCharacters() throws Exception {
+    java.io.File source = new java.io.File("src/test/resources/parquet/logical_date.parquet");
+    DuckDBParquetService service = new DuckDBParquetService();
+    ParquetData data = service.loadParquet(source);
+
+    java.io.File target = safePathTempDir.resolve("salida [x].parquet").toFile();
+    service.saveParquet(target, data);
+
+    assertThat(target).exists();
+    ParquetData reloaded = service.loadParquet(target);
+    assertThat(reloaded.getRows()).hasSameSizeAs(data.getRows());
+  }
 }
 

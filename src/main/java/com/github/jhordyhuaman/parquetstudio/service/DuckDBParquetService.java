@@ -65,56 +65,65 @@ public class DuckDBParquetService {
       throw new SQLException("DuckDB JDBC driver not loaded. Check classpath for org.duckdb:duckdb_jdbc dependency.");
     }
 
-    LOGGER.info("Attempting to create connection to: " + DUCKDB_JDBC_URL);
-    try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
-      LOGGER.info("Connection established successfully");
-      List<String> columnNames = new ArrayList<>();
-      List<String> columnTypes = new ArrayList<>();
+    File readable = SafeParquetPath.toReadable(file);
+    try {
+      LOGGER.info("Attempting to create connection to: " + DUCKDB_JDBC_URL);
+      try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
+        LOGGER.info("Connection established successfully");
+        List<String> columnNames = new ArrayList<>();
+        List<String> columnTypes = new ArrayList<>();
 
-      // Detect schema
-      String sql = "SELECT * FROM read_parquet(?) LIMIT 0";
-      try (PreparedStatement ps = conn.prepareStatement(sql)) {
-        ps.setString(1, file.getAbsolutePath());
-        try (ResultSet rs = ps.executeQuery()) {
-          ResultSetMetaData md = rs.getMetaData();
-          int n = md.getColumnCount();
-          for (int i = 1; i <= n; i++) {
-            columnNames.add(md.getColumnLabel(i));
-            String type = md.getColumnTypeName(i).toUpperCase(Locale.ROOT);
-            columnTypes.add(normalizeType(type));
-          }
-        }
-      }
-
-      // Load all data
-      List<List<Object>> rows = new ArrayList<>();
-      String readAll = "SELECT * FROM read_parquet(?)";
-      try (PreparedStatement ps = conn.prepareStatement(readAll)) {
-        ps.setString(1, file.getAbsolutePath());
-        try (ResultSet rs = ps.executeQuery()) {
-          while (rs.next()) {
-            List<Object> row = new ArrayList<>();
-            for (int i = 1; i <= columnNames.size(); i++) {
-              Object val = rs.getObject(i);
-              row.add(val);
+        // Detect schema
+        String sql = "SELECT * FROM read_parquet(?) LIMIT 0";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+          ps.setString(1, readable.getAbsolutePath());
+          try (ResultSet rs = ps.executeQuery()) {
+            ResultSetMetaData md = rs.getMetaData();
+            int n = md.getColumnCount();
+            for (int i = 1; i <= n; i++) {
+              columnNames.add(md.getColumnLabel(i));
+              String type = md.getColumnTypeName(i).toUpperCase(Locale.ROOT);
+              columnTypes.add(normalizeType(type));
             }
-            rows.add(row);
           }
         }
-      }
 
-      LOGGER.info(
-          String.format(
-              "Loaded: %d columns, %d rows", columnNames.size(), rows.size()));
-      return new ParquetData(columnNames, columnTypes, rows);
-    } catch (SQLException e) {
-      LOGGER.error("SQL Exception while loading Parquet file", e);
-      LOGGER.error("SQL State: " + e.getSQLState());
-      LOGGER.error("Error Code: " + e.getErrorCode());
-      throw e;
-    } catch (Exception e) {
-      LOGGER.error("Unexpected exception while loading Parquet file", e);
-      throw e;
+        // Load all data
+        List<List<Object>> rows = new ArrayList<>();
+        String readAll = "SELECT * FROM read_parquet(?)";
+        try (PreparedStatement ps = conn.prepareStatement(readAll)) {
+          ps.setString(1, readable.getAbsolutePath());
+          try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+              List<Object> row = new ArrayList<>();
+              for (int i = 1; i <= columnNames.size(); i++) {
+                Object val = rs.getObject(i);
+                row.add(val);
+              }
+              rows.add(row);
+            }
+          }
+        }
+
+        LOGGER.info(
+            String.format(
+                "Loaded: %d columns, %d rows", columnNames.size(), rows.size()));
+        return new ParquetData(columnNames, columnTypes, rows);
+      } catch (SQLException e) {
+        LOGGER.error("SQL Exception while loading Parquet file", e);
+        LOGGER.error("SQL State: " + e.getSQLState());
+        LOGGER.error("Error Code: " + e.getErrorCode());
+        throw e;
+      } catch (Exception e) {
+        LOGGER.error("Unexpected exception while loading Parquet file", e);
+        throw e;
+      }
+    } finally {
+      if (SafeParquetPath.isTempCopy(file, readable)) {
+        if (!readable.delete()) {
+          LOGGER.warn("Could not delete temp copy: " + readable.getAbsolutePath());
+        }
+      }
     }
   }
 
@@ -127,11 +136,15 @@ public class DuckDBParquetService {
     if (data.getColumnNames().isEmpty()) {
       throw new IllegalArgumentException("No columns to save");
     }
-    
+
     if (!driverLoaded) {
       throw new SQLException("DuckDB JDBC driver not loaded. Check classpath for org.duckdb:duckdb_jdbc dependency.");
     }
 
+    SafeParquetPath.writeThenMove(file, actualTarget -> doSaveParquet(actualTarget, data));
+  }
+
+  private void doSaveParquet(File file, ParquetData data) throws Exception {
     LOGGER.info("Attempting to create connection to: " + DUCKDB_JDBC_URL);
     try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
       LOGGER.info("Connection established successfully");
@@ -197,10 +210,12 @@ public class DuckDBParquetService {
 
       // Verify data types after insertion
       LOGGER.info("=== VERIFYING DATA TYPES AFTER INSERT ===");
-      try (Statement st = conn.createStatement();
-           ResultSet rs = st.executeQuery("SELECT typeof(" + escapeIdent(data.getColumnNames().get(10)) + ") as type FROM " + tempTable + " LIMIT 1")) {
-        if (rs.next()) {
-          LOGGER.info("Sample column type after insert: " + data.getColumnNames().get(10) + " = " + rs.getString("type"));
+      if (data.getColumnNames().size() > 10) {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT typeof(" + escapeIdent(data.getColumnNames().get(10)) + ") as type FROM " + tempTable + " LIMIT 1")) {
+          if (rs.next()) {
+            LOGGER.info("Sample column type after insert: " + data.getColumnNames().get(10) + " = " + rs.getString("type"));
+          }
         }
       }
 
