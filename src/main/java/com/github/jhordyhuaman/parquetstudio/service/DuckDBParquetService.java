@@ -158,26 +158,13 @@ public class DuckDBParquetService {
         String colType = data.getColumnTypes().get(i);
         // Convert schema types to DuckDB types
         String duckDBType = toDuckDBType(colType);
-        LOGGER.info("Column " + colName + ": " + colType + " -> DuckDB type: " + duckDBType);
+        LOGGER.debug("Column " + colName + ": " + colType + " -> DuckDB type: " + duckDBType);
         ddl.append(escapeIdent(colName)).append(" ").append(duckDBType);
       }
       ddl.append(")");
       LOGGER.info("Creating table with DDL: " + ddl.toString().substring(0, Math.min(500, ddl.length())) + "...");
       try (Statement st = conn.createStatement()) {
         st.execute(ddl.toString());
-      }
-
-      // Verify table schema was created correctly
-      LOGGER.info("=== VERIFYING TABLE SCHEMA ===");
-      try (Statement st = conn.createStatement();
-           ResultSet rs = st.executeQuery("DESCRIBE " + tempTable)) {
-        while (rs.next()) {
-          String colName = rs.getString("column_name");
-          String colType = rs.getString("column_type");
-          if (colType.contains("DECIMAL") || colType.contains("VARCHAR")) {
-            LOGGER.info("Table column: " + colName + " = " + colType);
-          }
-        }
       }
 
       // Insert rows
@@ -188,126 +175,27 @@ public class DuckDBParquetService {
       }
       ins.append(")");
 
-      int[] nullCounts = new int[data.getColumnNames().size()];
-      int[] valueCounts = new int[data.getColumnNames().size()];
-
       try (PreparedStatement ps = conn.prepareStatement(ins.toString())) {
         for (List<Object> row : data.getRows()) {
           for (int i = 0; i < data.getColumnNames().size(); i++) {
             Object val = row.size() > i ? row.get(i) : null;
             String expectedType = data.getColumnTypes().get(i);
-            boolean wasNull = setParameter(ps, i + 1, val, expectedType);
-            if (wasNull) {
-              nullCounts[i]++;
-            } else {
-              valueCounts[i]++;
-            }
+            setParameter(ps, i + 1, val, expectedType);
           }
           ps.addBatch();
         }
         ps.executeBatch();
       }
 
-      // Verify data types after insertion
-      LOGGER.info("=== VERIFYING DATA TYPES AFTER INSERT ===");
-      if (data.getColumnNames().size() > 10) {
-        try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT typeof(" + escapeIdent(data.getColumnNames().get(10)) + ") as type FROM " + tempTable + " LIMIT 1")) {
-          if (rs.next()) {
-            LOGGER.info("Sample column type after insert: " + data.getColumnNames().get(10) + " = " + rs.getString("type"));
-          }
-        }
-      }
-
-      // Log columns with high NULL ratio
-      for (int i = 0; i < data.getColumnNames().size(); i++) {
-        String colType = toDuckDBType(data.getColumnTypes().get(i));
-        if (colType.startsWith("DECIMAL") || colType.equals("INTEGER") || colType.equals("BIGINT")) {
-          LOGGER.info("Column " + data.getColumnNames().get(i) + " (" + colType + "): " +
-                     valueCounts[i] + " values, " + nullCounts[i] + " nulls");
-        }
-      }
-
-      // Check if any numeric columns have ALL NULLs - if so, we need to insert a dummy row
-      // to force the correct type in Parquet
-      boolean needsDummyRow = false;
-      for (int i = 0; i < data.getColumnNames().size(); i++) {
-        String colType = toDuckDBType(data.getColumnTypes().get(i));
-        if ((colType.startsWith("DECIMAL") || colType.equals("INTEGER") || colType.equals("BIGINT"))
-            && valueCounts[i] == 0 && nullCounts[i] > 0) {
-          needsDummyRow = true;
-          LOGGER.warn("Column " + data.getColumnNames().get(i) + " has ALL NULL values - will insert dummy row");
-        }
-      }
-
-      // Add a dummy row marker column if needed
-      String exportQuery;
-      if (needsDummyRow) {
-        // First, add a marker column to identify the dummy row
-        String alterSql = "ALTER TABLE " + tempTable + " ADD COLUMN _dummy_marker BOOLEAN DEFAULT FALSE";
-        try (Statement st = conn.createStatement()) {
-          st.execute(alterSql);
-        }
-
-        // Insert a dummy row with actual values for all columns
-        StringBuilder dummyIns = new StringBuilder("INSERT INTO ").append(tempTable).append(" (");
-        StringBuilder dummyVals = new StringBuilder(") VALUES (");
-        for (int i = 0; i < data.getColumnNames().size(); i++) {
-          if (i > 0) {
-            dummyIns.append(", ");
-            dummyVals.append(", ");
-          }
-          dummyIns.append(escapeIdent(data.getColumnNames().get(i)));
-          String colType = toDuckDBType(data.getColumnTypes().get(i));
-          // Add appropriate dummy value based on type
-          if (colType.startsWith("DECIMAL")) {
-            dummyVals.append("0.0");
-          } else if (colType.equals("INTEGER") || colType.equals("BIGINT")) {
-            dummyVals.append("0");
-          } else if (colType.equals("DATE")) {
-            dummyVals.append("'2000-01-01'");
-          } else if (colType.equals("TIMESTAMP")) {
-            dummyVals.append("'2000-01-01 00:00:00'");
-          } else if (colType.equals("BOOLEAN")) {
-            dummyVals.append("FALSE");
-          } else {
-            dummyVals.append("''");
-          }
-        }
-        dummyIns.append(", _dummy_marker").append(dummyVals).append(", TRUE)");
-
-        try (Statement st = conn.createStatement()) {
-          st.execute(dummyIns.toString());
-        }
-        LOGGER.info("Inserted dummy row to force correct types");
-
-        // Export excluding the dummy row
-        exportQuery = "COPY (SELECT " + buildColumnList(data.getColumnNames()) +
-                     " FROM " + tempTable + " WHERE _dummy_marker = FALSE OR _dummy_marker IS NULL) TO '" +
-                     file.getAbsolutePath().replace("'", "''") + "' (FORMAT PARQUET)";
-      } else {
-        exportQuery = "COPY (SELECT * FROM " + tempTable + ") TO '" +
-                     file.getAbsolutePath().replace("'", "''") + "' (FORMAT PARQUET)";
-      }
-
-      LOGGER.info("=== BUILDING SELECT (v4) ===");
-      LOGGER.info("Export query: " + exportQuery);
-
+      // Export table to Parquet
+      String exportQuery = "COPY (SELECT * FROM " + tempTable + ") TO '"
+          + file.getAbsolutePath().replace("'", "''") + "' (FORMAT PARQUET)";
       try (Statement st = conn.createStatement()) {
         st.execute(exportQuery);
       }
 
       LOGGER.info("Parquet file saved: " + file.getAbsolutePath());
     }
-  }
-
-  private String buildColumnList(List<String> columnNames) {
-    StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < columnNames.size(); i++) {
-      if (i > 0) sb.append(", ");
-      sb.append(escapeIdent(columnNames.get(i)));
-    }
-    return sb.toString();
   }
 
   private String normalizeType(String type) {

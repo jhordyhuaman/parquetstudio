@@ -194,5 +194,24 @@ class DuckDBParquetServiceTest {
     ParquetData reloaded = service.loadParquet(target);
     assertThat(reloaded.getRows()).hasSameSizeAs(data.getRows());
   }
+
+  @Test
+  void allNullDecimalColumnKeepsTypeAndRowCountOnSave() throws Exception {
+    java.util.List<String> names = java.util.List.of("id", "amount");
+    java.util.List<String> types = java.util.List.of("INTEGER", "DECIMAL(23,10)");
+    java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
+    rows.add(java.util.Arrays.asList(1, null));
+    rows.add(java.util.Arrays.asList(2, null));
+    ParquetData data = new ParquetData(names, types, rows);
+
+    java.io.File target = safePathTempDir.resolve("allnull.parquet").toFile();
+    DuckDBParquetService service = new DuckDBParquetService();
+    service.saveParquet(target, data);
+
+    ParquetData reloaded = service.loadParquet(target);
+    assertThat(reloaded.getRows()).hasSize(2);                 // no dummy row leaked
+    assertThat(reloaded.getColumnTypes().get(1)).startsWith("DECIMAL(23,10)");
+    assertThat(reloaded.getColumnTypes().get(0)).isEqualTo("INTEGER");
+  }
 }
 
