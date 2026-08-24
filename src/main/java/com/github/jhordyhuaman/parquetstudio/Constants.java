@@ -21,6 +21,7 @@ public class Constants {
         // Loading messages
         public final static String LOADING_FILE = "Loading file...";
         public final static String LOADING_INITIALIZING = "Initializing Parquet Studio...";
+        public final static String OPENED_IN_TOOL_WINDOW = "This file is open in the Parquet Studio tool window";
         public final static String LOADING_READING_SCHEMA = "Reading schema...";
         public final static String LOADING_READING_DATA = "Reading data...";
         public final static String LOADING_PREPARING_TABLE = "Preparing table...";

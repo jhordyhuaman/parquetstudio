@@ -28,7 +28,9 @@ import org.jetbrains.annotations.NotNull;
 public class ParquetEditorProvider implements FileEditorProvider, DumbAware {
   @Override
   public boolean accept(@NotNull Project project, @NotNull VirtualFile file) {
-    return file.getExtension() != null && file.getExtension().equalsIgnoreCase("parquet");
+    return file.isInLocalFileSystem()
+        && file.getExtension() != null
+        && file.getExtension().equalsIgnoreCase("parquet");
   }
 
   @NotNull
