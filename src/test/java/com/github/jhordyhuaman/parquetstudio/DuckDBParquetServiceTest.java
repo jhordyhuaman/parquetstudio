@@ -213,5 +213,24 @@ class DuckDBParquetServiceTest {
     assertThat(reloaded.getColumnTypes().get(1)).startsWith("DECIMAL(23,10)");
     assertThat(reloaded.getColumnTypes().get(0)).isEqualTo("INTEGER");
   }
+
+  @Test
+  void reportsValuesSilentlyConvertedToNullOnSave() throws Exception {
+    java.util.List<String> names = java.util.List.of("id", "amount");
+    java.util.List<String> types = java.util.List.of("INTEGER", "DECIMAL(10,2)");
+    java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
+    rows.add(java.util.Arrays.asList(1, "not-a-number"));
+    rows.add(java.util.Arrays.asList(2, "12.50"));
+    ParquetData data = new ParquetData(names, types, rows);
+
+    DuckDBParquetService service = new DuckDBParquetService();
+    java.io.File target = safePathTempDir.resolve("warns.parquet").toFile();
+    service.saveParquet(target, data);
+
+    org.assertj.core.api.Assertions.assertThat(service.getLastSaveConversionWarnings())
+        .hasSize(1);
+    org.assertj.core.api.Assertions.assertThat(service.getLastSaveConversionWarnings().get(0))
+        .contains("amount").contains("1 value");
+  }
 }
 

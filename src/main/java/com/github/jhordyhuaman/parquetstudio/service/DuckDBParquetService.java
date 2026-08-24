@@ -31,6 +31,12 @@ public class DuckDBParquetService {
   private static final String DUCKDB_JDBC_URL = "jdbc:duckdb:";
   private static volatile boolean driverLoaded = false;
 
+  private final List<String> lastSaveConversionWarnings = new ArrayList<>();
+
+  public List<String> getLastSaveConversionWarnings() {
+    return new ArrayList<>(lastSaveConversionWarnings);
+  }
+
   private static synchronized void ensureDriverLoaded() throws SQLException {
     if (driverLoaded) {
       return;
@@ -130,6 +136,7 @@ public class DuckDBParquetService {
 
     ensureDriverLoaded();
 
+    lastSaveConversionWarnings.clear();
     SafeParquetPath.writeThenMove(file, actualTarget -> doSaveParquet(actualTarget, data));
   }
 
@@ -164,16 +171,30 @@ public class DuckDBParquetService {
       }
       ins.append(")");
 
+      int[] failedCounts = new int[data.getColumnNames().size()];
       try (PreparedStatement ps = conn.prepareStatement(ins.toString())) {
         for (List<Object> row : data.getRows()) {
           for (int i = 0; i < data.getColumnNames().size(); i++) {
             Object val = row.size() > i ? row.get(i) : null;
             String expectedType = data.getColumnTypes().get(i);
-            setParameter(ps, i + 1, val, expectedType);
+            int code = setParameter(ps, i + 1, val, expectedType);
+            if (code == 2) {
+              failedCounts[i]++;
+            }
           }
           ps.addBatch();
         }
         ps.executeBatch();
+      }
+
+      for (int i = 0; i < data.getColumnNames().size(); i++) {
+        if (failedCounts[i] > 0) {
+          lastSaveConversionWarnings.add(
+              data.getColumnNames().get(i) + ": " + failedCounts[i]
+                  + " value(s) could not be converted to "
+                  + toDuckDBType(data.getColumnTypes().get(i))
+                  + " and were saved as NULL");
+        }
       }
 
       // Export table to Parquet
@@ -287,46 +308,47 @@ public class DuckDBParquetService {
 
   /**
    * Sets a parameter in a PreparedStatement, converting the value to the expected type if needed.
-   * Returns true if the value was set as NULL.
+   * Returns 0 if the value was set, 1 if it was set as an intentional NULL (null/empty input),
+   * or 2 if the value could not be converted and was set as NULL.
    */
-  private boolean setParameter(PreparedStatement ps, int index, Object val, String expectedType) throws SQLException {
+  private int setParameter(PreparedStatement ps, int index, Object val, String expectedType) throws SQLException {
     String duckDBType = toDuckDBType(expectedType);
 
     if (val == null || (val instanceof String && ((String) val).isEmpty())) {
       ps.setNull(index, java.sql.Types.NULL);
-      return true;
+      return 1;
     }
 
 
     // If the value is already the correct type, use it directly
     if (val instanceof Boolean) {
       ps.setBoolean(index, (Boolean) val);
-      return false;
+      return 0;
     } else if (val instanceof Integer) {
       ps.setInt(index, (Integer) val);
-      return false;
+      return 0;
     } else if (val instanceof Long) {
       ps.setLong(index, (Long) val);
-      return false;
+      return 0;
     } else if (val instanceof Double) {
       ps.setDouble(index, (Double) val);
-      return false;
+      return 0;
     } else if (val instanceof java.math.BigDecimal) {
       ps.setBigDecimal(index, (java.math.BigDecimal) val);
-      return false;
+      return 0;
     } else if (val instanceof LocalDate) {
       ps.setDate(index, Date.valueOf((LocalDate) val));
-      return false;
+      return 0;
     } else if (val instanceof LocalDateTime) {
       ps.setTimestamp(index, Timestamp.valueOf((LocalDateTime) val));
-      return false;
+      return 0;
     } else {
       // Value is a String, need to convert based on expected type
       String strVal = val.toString().trim();
 
       if (strVal.isEmpty()) {
         ps.setNull(index, java.sql.Types.NULL);
-        return true;
+        return 1;
       }
 
       try {
@@ -334,47 +356,47 @@ public class DuckDBParquetService {
           // Convert string to BigDecimal
           java.math.BigDecimal decimal = new java.math.BigDecimal(strVal);
           ps.setBigDecimal(index, decimal);
-          return false;
+          return 0;
         } else if (duckDBType.equals("INTEGER")) {
           ps.setInt(index, Integer.parseInt(strVal));
-          return false;
+          return 0;
         } else if (duckDBType.equals("BIGINT")) {
           ps.setLong(index, Long.parseLong(strVal));
-          return false;
+          return 0;
         } else if (duckDBType.equals("DOUBLE") || duckDBType.equals("FLOAT")) {
           ps.setDouble(index, Double.parseDouble(strVal));
-          return false;
+          return 0;
         } else if (duckDBType.equals("BOOLEAN")) {
           ps.setBoolean(index, Boolean.parseBoolean(strVal));
-          return false;
+          return 0;
         } else if (duckDBType.equals("DATE")) {
           // Try to parse date
           try {
             ps.setDate(index, Date.valueOf(LocalDate.parse(strVal)));
-            return false;
+            return 0;
           } catch (Exception e) {
             ps.setString(index, strVal);
-            return false;
+            return 0;
           }
         } else if (duckDBType.equals("TIMESTAMP")) {
           // Try to parse timestamp
           try {
             ps.setTimestamp(index, Timestamp.valueOf(LocalDateTime.parse(strVal)));
-            return false;
+            return 0;
           } catch (Exception e) {
             ps.setString(index, strVal);
-            return false;
+            return 0;
           }
         } else {
           // Default: VARCHAR
           ps.setString(index, strVal);
-          return false;
+          return 0;
         }
       } catch (NumberFormatException e) {
         // If conversion fails, set as null for numeric types
         LOGGER.warn("Failed to convert value '" + strVal.substring(0, Math.min(50, strVal.length())) + "' to " + duckDBType + ", setting as NULL. Column index: " + index);
         ps.setNull(index, java.sql.Types.NULL);
-        return true;
+        return 2;
       }
     }
   }
