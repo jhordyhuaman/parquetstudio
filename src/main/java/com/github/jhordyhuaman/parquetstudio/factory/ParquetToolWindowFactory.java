@@ -13,6 +13,7 @@
  */
 package com.github.jhordyhuaman.parquetstudio.factory;
 
+import com.github.jhordyhuaman.parquetstudio.service.ParquetStudioWindowService;
 import com.github.jhordyhuaman.parquetstudio.ui.ParquetToolWindow;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
@@ -27,6 +28,7 @@ public class ParquetToolWindowFactory implements ToolWindowFactory {
   @Override
   public void createToolWindowContent(Project project, ToolWindow toolWindow) {
     ParquetToolWindow parquetToolWindow = new ParquetToolWindow();
+    ParquetStudioWindowService.getInstance(project).registerPanel(parquetToolWindow);
     ContentFactory contentFactory = ContentFactory.getInstance();
     Content content = contentFactory.createContent(parquetToolWindow, "", false);
     toolWindow.getContentManager().addContent(content);
