@@ -34,4 +34,52 @@ class SafeParquetPathTest {
     assertThat(SafeParquetPath.needsSafeCopy("/data/gf_cutoff_date=2024-02-14/part.parquet", false))
         .isFalse();
   }
+
+  @org.junit.jupiter.api.io.TempDir
+  java.nio.file.Path tempDir;
+
+  @Test
+  void toReadableReturnsSameFileWhenSafe() throws Exception {
+    java.io.File f = tempDir.resolve("plain.parquet").toFile();
+    java.nio.file.Files.writeString(f.toPath(), "x");
+    java.io.File readable = SafeParquetPath.toReadable(f);
+    assertThat(readable).isEqualTo(f);
+    assertThat(SafeParquetPath.isTempCopy(f, readable)).isFalse();
+  }
+
+  @Test
+  void toReadableCopiesGlobNamedFile() throws Exception {
+    java.io.File f = tempDir.resolve("data [1].parquet").toFile();
+    java.nio.file.Files.writeString(f.toPath(), "content");
+    java.io.File readable = SafeParquetPath.toReadable(f);
+    try {
+      assertThat(readable).isNotEqualTo(f);
+      assertThat(readable.getName()).endsWith(".parquet");
+      assertThat(SafeParquetPath.needsSafeCopy(readable.getAbsolutePath(),
+          SafeParquetPath.isRunningOnWindows())).isFalse();
+      assertThat(java.nio.file.Files.readString(readable.toPath())).isEqualTo("content");
+      assertThat(SafeParquetPath.isTempCopy(f, readable)).isTrue();
+    } finally {
+      readable.delete();
+    }
+  }
+
+  @Test
+  void writeThenMovePlacesContentAtGlobNamedTarget() throws Exception {
+    java.io.File target = tempDir.resolve("out [x].parquet").toFile();
+    SafeParquetPath.writeThenMove(target,
+        f -> java.nio.file.Files.writeString(f.toPath(), "written"));
+    assertThat(java.nio.file.Files.readString(target.toPath())).isEqualTo("written");
+  }
+
+  @Test
+  void writeThenMoveWritesDirectlyWhenSafe() throws Exception {
+    java.io.File target = tempDir.resolve("out.parquet").toFile();
+    SafeParquetPath.writeThenMove(target,
+        f -> {
+          assertThat(f).isEqualTo(target);
+          java.nio.file.Files.writeString(f.toPath(), "direct");
+        });
+    assertThat(java.nio.file.Files.readString(target.toPath())).isEqualTo("direct");
+  }
 }

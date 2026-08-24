@@ -32,4 +32,44 @@ public final class SafeParquetPath {
     }
     return false;
   }
+
+  @FunctionalInterface
+  public interface IoConsumer<T> {
+    void accept(T t) throws Exception;
+  }
+
+  public static java.io.File toReadable(java.io.File source) throws java.io.IOException {
+    if (!needsSafeCopy(source.getAbsolutePath(), isRunningOnWindows())) {
+      return source;
+    }
+    java.nio.file.Path temp =
+        java.nio.file.Files.createTempFile("parquetstudio-", ".parquet");
+    java.nio.file.Files.copy(source.toPath(), temp,
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    temp.toFile().deleteOnExit();
+    return temp.toFile();
+  }
+
+  public static boolean isTempCopy(java.io.File original, java.io.File readable) {
+    return !original.equals(readable);
+  }
+
+  public static void writeThenMove(java.io.File target, IoConsumer<java.io.File> writer)
+      throws Exception {
+    if (!needsSafeCopy(target.getAbsolutePath(), isRunningOnWindows())) {
+      writer.accept(target);
+      return;
+    }
+    java.nio.file.Path temp =
+        java.nio.file.Files.createTempFile("parquetstudio-save-", ".parquet");
+    try {
+      // DuckDB COPY refuses to overwrite; hand it a non-existing path.
+      java.nio.file.Files.deleteIfExists(temp);
+      writer.accept(temp.toFile());
+      java.nio.file.Files.move(temp, target.toPath(),
+          java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    } finally {
+      java.nio.file.Files.deleteIfExists(temp);
+    }
+  }
 }
