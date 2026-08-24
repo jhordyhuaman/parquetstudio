@@ -13,7 +13,9 @@
  */
 package com.github.jhordyhuaman.parquetstudio.ui;
 
+import com.github.jhordyhuaman.parquetstudio.Constants;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.IconLoader;
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -245,8 +247,16 @@ public class ParquetToolWindow extends JPanel {
     tabbedPane.addTab(file.getName() + "  ×", null, editorPanel, file.getAbsolutePath());
     tabbedPane.setSelectedIndex(tabbedPane.getTabCount() - 1);
     // Load AFTER the tab exists so failures render inside the tab, not before it.
-    editorPanel.loadParquetFile(file);
-    LOGGER.info("Opened file in new tab: " + file.getName());
+    try {
+      editorPanel.loadParquetFile(file);
+      LOGGER.info("Opened file in new tab: " + file.getName());
+    } catch (Exception e) {
+      tabbedPane.remove(editorPanel);
+      updateView();
+      LOGGER.error("Error opening file: " + file.getName(), e);
+      Messages.showErrorDialog(
+          String.format(Constants.Message.ERROR_LOADING_FILE, e.getMessage()), "Error");
+    }
   }
 
   private int findTabIndexForPath(String normalizedPath) {
