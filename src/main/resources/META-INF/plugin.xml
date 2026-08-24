@@ -3,7 +3,7 @@
     <name>Parquet Studio</name>
     <description>Professional CRUD editor for Parquet files using DuckDB. Open, edit, search, and save Parquet files directly in IntelliJ IDEA.</description>
     <version>1.0.0</version>
-    <vendor email="jhordyhuaman@example.com" url="https://github.com/jhordyhuaman">Jhordy Huaman</vendor>
+    <vendor email="jhordyrx@gmail.com" url="https://github.com/jhordyhuaman">Jhordy Huaman</vendor>
 
     <depends>com.intellij.modules.lang</depends>
 

@@ -44,15 +44,15 @@ public class ParquetEditorService {
    * @return the loaded ParquetData
    * @throws Exception if loading fails
    */
-  public List<String> getLastSaveConversionWarnings() {
-    return duckDBService.getLastSaveConversionWarnings();
-  }
-
   public ParquetData loadParquetFile(File file) throws Exception {
     LOGGER.info("Loading Parquet file: " + file.getAbsolutePath());
     ParquetData data = duckDBService.loadParquet(file);
     this.currentFile = file;
     return data;
+  }
+
+  public List<String> getLastSaveConversionWarnings() {
+    return duckDBService.getLastSaveConversionWarnings();
   }
 
     public String generateTransformSchemaString() throws Exception {
