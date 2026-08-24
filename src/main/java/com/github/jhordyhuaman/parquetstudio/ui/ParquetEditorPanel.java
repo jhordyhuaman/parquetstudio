@@ -1158,6 +1158,14 @@ public class ParquetEditorPanel extends JPanel {
                   statusLabel.setText("File saved: " + outputFile.getName());
                   Messages.showInfoMessage(
                       "File saved successfully: " + outputFile.getPath(), "Success");
+                  java.util.List<String> warnings =
+                      editorService.getLastSaveConversionWarnings();
+                  if (!warnings.isEmpty()) {
+                    Messages.showWarningDialog(
+                        "Saved, but some values could not be converted and were written as NULL:\n\n"
+                            + String.join("\n", warnings),
+                        "Save Completed With Warnings");
+                  }
                 } catch (Exception e) {
                   LOGGER.error("Error saving Parquet file", e);
                   Messages.showErrorDialog("Error saving file: " + e.getCause().getMessage(), "Error");
