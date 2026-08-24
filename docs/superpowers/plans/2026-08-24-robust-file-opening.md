@@ -577,7 +577,9 @@ git add src/main/java/com/github/jhordyhuaman/parquetstudio/service/ParquetStudi
 git commit -m "feat: project service exposing ParquetToolWindow panel"
 ```
 
----### Task 7: Rewrite `ParquetFileEditor` opening flow (no retries, no flags, no scan)
+---
+
+### Task 7: Rewrite `ParquetFileEditor` opening flow (no retries, no flags, no scan)
 
 **Files:**
 - Modify: `src/main/java/com/github/jhordyhuaman/parquetstudio/factory/ParquetFileEditor.java`
