@@ -288,6 +288,18 @@ public class ParquetToolWindow extends JPanel {
     if (component instanceof ParquetEditorPanel) {
       ParquetEditorPanel panel = (ParquetEditorPanel) component;
 
+      if (panel.isDirty()) {
+        int choice = javax.swing.JOptionPane.showConfirmDialog(
+            this,
+            "\"" + panel.getDisplayName() + "\" has unsaved changes. Close anyway?",
+            "Unsaved Changes",
+            javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.WARNING_MESSAGE);
+        if (choice != javax.swing.JOptionPane.YES_OPTION) {
+          return;
+        }
+      }
+
       // Remove tab
       tabbedPane.removeTabAt(tabIndex);
 

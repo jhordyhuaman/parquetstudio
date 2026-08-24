@@ -52,5 +52,26 @@ class ParquetEditorPanelTest {
     assertThat(editorPanel.hasFile()).isFalse();
     assertThat(editorPanel.getCurrentFile()).isNull();
   }
+
+  @Test
+  void panelBecomesDirtyOnModelEditAndCleanAfterMarkSaved() throws Exception {
+    File fixture = new File("src/test/resources/parquet/logical_date.parquet");
+    ParquetEditorPanel panel = new ParquetEditorPanel();
+    javax.swing.SwingUtilities.invokeAndWait(() -> panel.loadParquetFile(fixture));
+    // Wait for the async SwingWorker load to finish.
+    long deadline = System.currentTimeMillis() + 15000;
+    while (panel.getTableModel() == null && System.currentTimeMillis() < deadline) {
+      Thread.sleep(100);
+    }
+    assertThat(panel.hasFile()).isTrue();
+    assertThat(panel.isDirty()).isFalse();
+
+    javax.swing.SwingUtilities.invokeAndWait(() ->
+        panel.getTableModel().setValueAt("2024-01-01T00:00:00", 0, 0));
+    assertThat(panel.isDirty()).isTrue();
+
+    panel.markSaved();
+    assertThat(panel.isDirty()).isFalse();
+  }
 }
 

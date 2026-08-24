@@ -79,6 +79,22 @@ public class ParquetEditorPanel extends JPanel {
   // Track the file being loaded (before it's fully loaded into the service)
   private File loadingFile;
 
+  private volatile boolean dirty = false;
+  private final javax.swing.event.TableModelListener dirtyListener = e -> dirty = true;
+
+  public boolean isDirty() {
+    return dirty;
+  }
+
+  public void markSaved() {
+    dirty = false;
+  }
+
+  /** Returns the current table model, for tests and callers needing direct access. */
+  public ParquetTableModel getTableModel() {
+    return tableModel;
+  }
+
   public ParquetEditorPanel() {
     this(true);
   }
@@ -619,6 +635,8 @@ public class ParquetEditorPanel extends JPanel {
                 ParquetData data = get();
                 tableModel = editorService.initializeTableModel(data);
                 dataTable.setModel(tableModel);
+                tableModel.addTableModelListener(dirtyListener);
+                dirty = false;
 
                 // Configure cell editor for all columns (especially needed for DATE and TIMESTAMP)
                 configureCellEditors();
@@ -1136,6 +1154,7 @@ public class ParquetEditorPanel extends JPanel {
               protected void done() {
                 try {
                   get();
+                  markSaved();
                   statusLabel.setText("File saved: " + outputFile.getName());
                   Messages.showInfoMessage(
                       "File saved successfully: " + outputFile.getPath(), "Success");
