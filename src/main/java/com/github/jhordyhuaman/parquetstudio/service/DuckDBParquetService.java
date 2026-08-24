@@ -20,7 +20,6 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 
@@ -30,19 +29,23 @@ import java.util.Locale;
 public class DuckDBParquetService {
   private static final Logger LOGGER = Logger.getInstance(DuckDBParquetService.class);
   private static final String DUCKDB_JDBC_URL = "jdbc:duckdb:";
-  private static boolean driverLoaded = false;
+  private static volatile boolean driverLoaded = false;
 
-  static {
+  private static synchronized void ensureDriverLoaded() throws SQLException {
+    if (driverLoaded) {
+      return;
+    }
     try {
-      LOGGER.info("Attempting to load DuckDB JDBC driver...");
       Class<?> driverClass = Class.forName("org.duckdb.DuckDBDriver");
       Driver driver = (Driver) driverClass.getDeclaredConstructor().newInstance();
       DriverManager.registerDriver(driver);
       driverLoaded = true;
-      LOGGER.info("DuckDB JDBC driver loaded successfully");
+      LOGGER.info("DuckDB JDBC driver loaded");
     } catch (Exception e) {
       LOGGER.error("Failed to load DuckDB JDBC driver", e);
-      driverLoaded = false;
+      throw new SQLException(
+          "DuckDB JDBC driver could not be loaded: " + e.getMessage()
+              + ". Try restarting the IDE.", e);
     }
   }
 
@@ -51,25 +54,13 @@ public class DuckDBParquetService {
    */
   public ParquetData loadParquet(File file) throws Exception {
     LOGGER.info("Loading Parquet file: " + file.getAbsolutePath());
-    LOGGER.info("Driver loaded status: " + driverLoaded);
-
-    // Log available drivers for debugging
-    Enumeration<Driver> drivers = DriverManager.getDrivers();
-    LOGGER.info("Available JDBC drivers:");
-    while (drivers.hasMoreElements()) {
-      Driver d = drivers.nextElement();
-      LOGGER.info("  - " + d.getClass().getName());
-    }
-
-    if (!driverLoaded) {
-      throw new SQLException("DuckDB JDBC driver not loaded. Check classpath for org.duckdb:duckdb_jdbc dependency.");
-    }
+    ensureDriverLoaded();
 
     File readable = SafeParquetPath.toReadable(file);
     try {
-      LOGGER.info("Attempting to create connection to: " + DUCKDB_JDBC_URL);
+      LOGGER.debug("Attempting to create connection to: " + DUCKDB_JDBC_URL);
       try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
-        LOGGER.info("Connection established successfully");
+        LOGGER.debug("Connection established successfully");
         List<String> columnNames = new ArrayList<>();
         List<String> columnTypes = new ArrayList<>();
 
@@ -137,17 +128,15 @@ public class DuckDBParquetService {
       throw new IllegalArgumentException("No columns to save");
     }
 
-    if (!driverLoaded) {
-      throw new SQLException("DuckDB JDBC driver not loaded. Check classpath for org.duckdb:duckdb_jdbc dependency.");
-    }
+    ensureDriverLoaded();
 
     SafeParquetPath.writeThenMove(file, actualTarget -> doSaveParquet(actualTarget, data));
   }
 
   private void doSaveParquet(File file, ParquetData data) throws Exception {
-    LOGGER.info("Attempting to create connection to: " + DUCKDB_JDBC_URL);
+    LOGGER.debug("Attempting to create connection to: " + DUCKDB_JDBC_URL);
     try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
-      LOGGER.info("Connection established successfully");
+      LOGGER.debug("Connection established successfully");
       String tempTable = "temp_table_" + System.currentTimeMillis();
 
       // Create temporary table
