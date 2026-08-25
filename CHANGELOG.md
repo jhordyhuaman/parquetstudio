@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-25
+
+### Added
+- **Optimize Dialog** - New optimization panel for compacting and reorganizing Parquet files
+- **ZSTD Compression** - Support for ZSTD compression when optimizing files
+- **Fragment Files** - Fragment Parquet files into N files, by row count, or by file size
+- **Consolidate Part-Files** - Consolidate multiple part-files into a single file (Spark-style coalesce/repartition)
+- **DuckDB-powered Operations** - All optimization operations powered by DuckDB for efficiency
+
+[1.7.0]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.7.0
+
 ## [1.6.0] - 2026-08-24
 
 ### Fixed
