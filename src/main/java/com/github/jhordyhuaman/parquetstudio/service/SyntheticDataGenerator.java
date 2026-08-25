@@ -129,7 +129,7 @@ public class SyntheticDataGenerator {
       case "FLOAT":
         return generateDouble(random, lowerName);
       case "DATE":
-        return generateDateOrName(columnName, lowerName, random, false);
+        return randomDate(random);
       case "TIMESTAMP":
         return generateTimestamp(random);
       case "BOOLEAN":
@@ -147,19 +147,34 @@ public class SyntheticDataGenerator {
         || lowerName.contains("precio");
   }
 
-  private BigDecimal randomDecimal(Random random, int precision, int scale, boolean positiveOnly) {
+  private BigDecimal randomDecimal(Random random, int precision, int scale, boolean amountLike) {
     int intDigits = Math.min(Math.max(precision - scale, 0), 7);
     double maxMagnitude = Math.pow(10, intDigits);
-    double value = random.nextDouble() * maxMagnitude;
+    double value;
+    if (amountLike) {
+      int wholePart = random.nextInt((int) maxMagnitude);
+      int cents = random.nextInt(100);
+      value = wholePart + cents / 100.0;
+    } else {
+      value = random.nextDouble() * maxMagnitude;
+    }
+    double scaleUnit = Math.pow(10, -scale);
+    double maxAllowed = maxMagnitude - scaleUnit;
+    if (value > maxAllowed) {
+      value = maxAllowed;
+    }
+    if (value < 0) {
+      value = 0;
+    }
     BigDecimal decimal = BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
     return decimal.abs();
   }
 
   private Object generateDouble(Random random, String lowerName) {
     double value = random.nextDouble() * 1_000_000;
-    int decimals = 2 + random.nextInt(3);
+    int decimals = isAmountLike(lowerName) ? 2 : 2 + random.nextInt(3);
     BigDecimal rounded = BigDecimal.valueOf(value).setScale(decimals, RoundingMode.HALF_UP);
-    return rounded.doubleValue();
+    return Math.abs(rounded.doubleValue());
   }
 
   private LocalDate randomDate(Random random) {
@@ -175,10 +190,6 @@ public class SyntheticDataGenerator {
     LocalDate date = randomDate(random);
     LocalTime time = LocalTime.of(random.nextInt(24), random.nextInt(60), random.nextInt(60));
     return LocalDateTime.of(date, time);
-  }
-
-  private Object generateDateOrName(String columnName, String lowerName, Random random, boolean asString) {
-    return randomDate(random);
   }
 
   private String generateVarchar(String columnName, String lowerName, Random random) {

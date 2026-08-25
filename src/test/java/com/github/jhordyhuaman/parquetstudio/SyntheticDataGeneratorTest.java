@@ -111,6 +111,45 @@ public class SyntheticDataGeneratorTest {
   }
 
   @Test
+  void amountHeuristicPositiveTwoDecimals() {
+    List<String> namesDouble = Arrays.asList("total_price");
+    List<String> typesDouble = Arrays.asList("DOUBLE");
+
+    GenerationResult doubleResult = generator.generate(namesDouble, typesDouble, 30, 21L, 0.0);
+    for (List<Object> row : doubleResult.getData().getRows()) {
+      double value = (Double) row.get(0);
+      assertThat(value).isGreaterThan(0.0);
+      BigDecimal asDecimal = BigDecimal.valueOf(value);
+      assertThat(asDecimal.scale()).isLessThanOrEqualTo(2);
+    }
+
+    List<String> namesDecimal = Arrays.asList("importe_total");
+    List<String> typesDecimal = Arrays.asList("DECIMAL(10,4)");
+
+    GenerationResult decimalResult = generator.generate(namesDecimal, typesDecimal, 30, 22L, 0.0);
+    for (List<Object> row : decimalResult.getData().getRows()) {
+      BigDecimal value = (BigDecimal) row.get(0);
+      assertThat(value.signum()).isGreaterThanOrEqualTo(0);
+      assertThat(value.scale()).isEqualTo(4);
+    }
+  }
+
+  @Test
+  void decimalNeverExceedsPrecision() {
+    List<String> names = Arrays.asList("small_decimal");
+    List<String> types = Arrays.asList("DECIMAL(3,2)");
+
+    for (long seed = 0; seed < 50; seed++) {
+      GenerationResult result = generator.generate(names, types, 100, seed, 0.0);
+      for (List<Object> row : result.getData().getRows()) {
+        BigDecimal value = (BigDecimal) row.get(0);
+        assertThat(value.precision()).isLessThanOrEqualTo(3);
+        assertThat(value.abs().compareTo(BigDecimal.TEN)).isLessThan(0);
+      }
+    }
+  }
+
+  @Test
   void unknownTypeYieldsNullsAndWarning() {
     List<String> names = Arrays.asList("payload");
     List<String> types = Arrays.asList("STRUCT(x INT)");
