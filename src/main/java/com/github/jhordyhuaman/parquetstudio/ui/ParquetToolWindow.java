@@ -244,13 +244,56 @@ public class ParquetToolWindow extends JPanel {
    * (via {@link #runConsolidate}), so the result always ends up opened in a tab.
    */
   public void runConsolidate(File sourceDir, File outputFile) {
-    List<File> sources = optimizationService.listParquetFiles(sourceDir);
+    runConsolidate(sourceDir, outputFile, null);
+  }
 
+  /**
+   * Consolidates the parquet files found in {@code sourceDir} into {@code outputFile}, then
+   * opens the result in a new tab (or reloads it if already open). This is the single
+   * consolidate implementation used by both this tool window's own Optimize button and any
+   * {@link ParquetEditorPanel}'s Optimize dialog.
+   *
+   * @param sourceDir the directory containing the parquet files to consolidate
+   * @param outputFile the destination file for the consolidated output
+   * @param onComplete optional callback invoked on the EDT once the operation finishes
+   *     (success or failure), useful for resetting an initiating panel's status label
+   */
+  public void runConsolidate(File sourceDir, File outputFile, Runnable onComplete) {
+    List<File> sources = new java.util.ArrayList<>(optimizationService.listParquetFiles(sourceDir));
+
+    String outputCanonicalPath = getNormalizedPath(outputFile);
+    sources.removeIf(f -> getNormalizedPath(f).equals(outputCanonicalPath));
+
+    if (sources.size() < 2) {
+      Messages.showErrorDialog(
+          "The source directory must contain at least 2 parquet files to consolidate.", "Error");
+      if (onComplete != null) {
+        onComplete.run();
+      }
+      return;
+    }
+
+    if (outputFile.exists()) {
+      int choice = JOptionPane.showConfirmDialog(
+          this,
+          "\"" + outputFile.getName() + "\" already exists. Overwrite it?",
+          "Confirm Overwrite",
+          JOptionPane.YES_NO_OPTION,
+          JOptionPane.WARNING_MESSAGE);
+      if (choice != JOptionPane.YES_OPTION) {
+        if (onComplete != null) {
+          onComplete.run();
+        }
+        return;
+      }
+    }
+
+    List<File> finalSources = sources;
     SwingWorker<Long, Void> consolidateWorker =
         new SwingWorker<Long, Void>() {
           @Override
           protected Long doInBackground() throws Exception {
-            return optimizationService.consolidate(sources, outputFile);
+            return optimizationService.consolidate(finalSources, outputFile);
           }
 
           @Override
@@ -259,18 +302,47 @@ public class ParquetToolWindow extends JPanel {
               get();
               String message = String.format(
                   "Consolidated %d files → %s (%s)",
-                  sources.size(), outputFile.getName(),
+                  finalSources.size(), outputFile.getName(),
                   ParquetEditorPanel.formatFileSize(outputFile.length()));
               Messages.showInfoMessage(message, "Consolidate Complete");
-              openFileInTab(outputFile);
+              reloadOrOpen(outputFile);
             } catch (Exception e) {
               LOGGER.error("Error consolidating Parquet files", e);
               String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
               Messages.showErrorDialog("Error consolidating files: " + errorMessage, "Error");
+            } finally {
+              if (onComplete != null) {
+                onComplete.run();
+              }
             }
           }
         };
     consolidateWorker.execute();
+  }
+
+  /**
+   * Opens {@code file} in a new tab, or reloads it in place if it is already open in a tab
+   * (e.g. after consolidating onto a file that is currently displayed), then selects that tab.
+   *
+   * @param file the file to open or reload
+   */
+  void reloadOrOpen(File file) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> reloadOrOpen(file));
+      return;
+    }
+    String filePath = getNormalizedPath(file);
+    int existing = findTabIndexForPath(filePath);
+    if (existing >= 0) {
+      ParquetEditorPanel panel = getEditorPanelAt(existing);
+      if (panel != null) {
+        panel.loadParquetFile(file);
+      }
+      showTabsPanel();
+      tabbedPane.setSelectedIndex(existing);
+      return;
+    }
+    openFileInTab(file);
   }
 
 

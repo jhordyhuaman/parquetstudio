@@ -1311,7 +1311,10 @@ public class ParquetEditorPanel extends JPanel {
       return;
     }
     statusLabel.setText("Consolidating…");
-    toolWindow.runConsolidate(dialog.getConsolidateSourceDir(), dialog.getConsolidateOutputFile());
+    toolWindow.runConsolidate(
+        dialog.getConsolidateSourceDir(),
+        dialog.getConsolidateOutputFile(),
+        () -> statusLabel.setText("Ready."));
   }
 
   /**
