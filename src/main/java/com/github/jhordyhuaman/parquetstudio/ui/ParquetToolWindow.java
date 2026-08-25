@@ -218,7 +218,7 @@ public class ParquetToolWindow extends JPanel {
         }
         break;
       case CONSOLIDATE:
-        consolidateFromDialog(dialog);
+        runConsolidate(dialog.getConsolidateSourceDir(), dialog.getConsolidateOutputFile());
         break;
       default:
         break;
@@ -238,12 +238,12 @@ public class ParquetToolWindow extends JPanel {
   }
 
   /**
-   * Consolidates the parquet files found in the dialog's chosen source directory into the
-   * chosen output file, then opens the result in a new tab.
+   * Consolidates the parquet files found in {@code sourceDir} into {@code outputFile}, then
+   * opens the result in a new tab. This is the single consolidate implementation used by both
+   * this tool window's own Optimize button and any {@link ParquetEditorPanel}'s Optimize dialog
+   * (via {@link #runConsolidate}), so the result always ends up opened in a tab.
    */
-  private void consolidateFromDialog(OptimizeFileDialog dialog) {
-    File sourceDir = dialog.getConsolidateSourceDir();
-    File outputFile = dialog.getConsolidateOutputFile();
+  public void runConsolidate(File sourceDir, File outputFile) {
     List<File> sources = optimizationService.listParquetFiles(sourceDir);
 
     SwingWorker<Long, Void> consolidateWorker =
@@ -259,7 +259,8 @@ public class ParquetToolWindow extends JPanel {
               get();
               String message = String.format(
                   "Consolidated %d files → %s (%s)",
-                  sources.size(), outputFile.getName(), formatFileSize(outputFile.length()));
+                  sources.size(), outputFile.getName(),
+                  ParquetEditorPanel.formatFileSize(outputFile.length()));
               Messages.showInfoMessage(message, "Consolidate Complete");
               openFileInTab(outputFile);
             } catch (Exception e) {
@@ -272,12 +273,6 @@ public class ParquetToolWindow extends JPanel {
     consolidateWorker.execute();
   }
 
-  private String formatFileSize(long bytes) {
-    if (bytes < 1024) return bytes + " B";
-    int exp = (int) (Math.log(bytes) / Math.log(1024));
-    String pre = "KMGTPE".charAt(exp - 1) + "";
-    return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
-  }
 
 
   private void openParquetFile() {

@@ -112,6 +112,28 @@ class ParquetOptimizationServiceTest {
   }
 
   @Test
+  @DisplayName("fragmentReportsProgress")
+  void fragmentReportsProgress() throws Exception {
+    File destDir = new File(tempDir.toFile(), "frag-progress");
+    destDir.mkdirs();
+
+    List<int[]> calls = new ArrayList<>();
+    List<File> parts =
+        service.fragment(
+            fixture,
+            destDir,
+            FragmentCriterion.NUM_FILES,
+            3,
+            (done, total) -> calls.add(new int[] {done, total}));
+
+    assertThat(parts).hasSize(3);
+    assertThat(calls).hasSize(3);
+    for (int i = 0; i < calls.size(); i++) {
+      assertThat(calls.get(i)).containsExactly(i + 1, 3);
+    }
+  }
+
+  @Test
   @DisplayName("consolidateRoundTrip")
   void consolidateRoundTrip() throws Exception {
     File destDir = new File(tempDir.toFile(), "frag-for-consolidate");

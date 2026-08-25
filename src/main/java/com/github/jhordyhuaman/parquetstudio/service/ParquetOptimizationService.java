@@ -71,6 +71,25 @@ public class ParquetOptimizationService {
    */
   public List<File> fragment(File source, File destDir, FragmentCriterion criterion, long value)
       throws Exception {
+    return fragment(source, destDir, criterion, value, null);
+  }
+
+  /**
+   * Splits {@code source} into ZSTD-compressed part files inside {@code destDir}, named
+   * {@code part-00000.parquet}, {@code part-00001.parquet}, ..., reporting progress after each
+   * part is written.
+   *
+   * @param progress optional callback invoked with (partsWrittenSoFar, totalParts) after each
+   *     part completes; may be {@code null}.
+   * @return the created files, in order.
+   */
+  public List<File> fragment(
+      File source,
+      File destDir,
+      FragmentCriterion criterion,
+      long value,
+      java.util.function.BiConsumer<Integer, Integer> progress)
+      throws Exception {
     ensureDriverLoaded();
 
     File readable = SafeParquetPath.toReadable(source);
@@ -81,6 +100,7 @@ public class ParquetOptimizationService {
       if (rowsPerPart <= 0) {
         rowsPerPart = 1;
       }
+      int totalParts = (int) Math.ceil((double) totalRows / (double) rowsPerPart);
 
       // Assumes DuckDB's parquet scan order is stable across identical repeated queries on an
       // unmodified file; SQL gives no ORDER BY guarantee, but a static file + no ORDER BY has been
@@ -100,6 +120,9 @@ public class ParquetOptimizationService {
         created.add(part);
         offset += rowsPerPart;
         partIndex++;
+        if (progress != null) {
+          progress.accept((int) partIndex, totalParts);
+        }
       }
       return created;
     } finally {

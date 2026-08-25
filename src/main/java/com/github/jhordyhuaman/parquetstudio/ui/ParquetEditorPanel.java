@@ -276,9 +276,10 @@ public class ParquetEditorPanel extends JPanel {
   }
 
   /**
-   * Formats file size in human-readable format.
+   * Formats file size in human-readable format. Static and package-visible so other UI classes
+   * (e.g. {@link ParquetToolWindow}) can reuse it instead of duplicating the logic.
    */
-  private String formatFileSize(long bytes) {
+  static String formatFileSize(long bytes) {
     if (bytes < 1024) return bytes + " B";
     int exp = (int) (Math.log(bytes) / Math.log(1024));
     String pre = "KMGTPE".charAt(exp - 1) + "";
@@ -1221,7 +1222,7 @@ public class ParquetEditorPanel extends JPanel {
         fragmentFile(dialog);
         break;
       case CONSOLIDATE:
-        consolidateFromDialog(dialog);
+        delegateConsolidate(dialog);
         break;
       default:
         break;
@@ -1255,11 +1256,20 @@ public class ParquetEditorPanel extends JPanel {
     }
 
     statusLabel.setText("Fragmenting…");
-    SwingWorker<List<File>, Void> fragmentWorker =
-        new SwingWorker<List<File>, Void>() {
+    SwingWorker<List<File>, String> fragmentWorker =
+        new SwingWorker<List<File>, String>() {
           @Override
           protected List<File> doInBackground() throws Exception {
-            return optimizationService.fragment(currentFile, destDir, criterion, value);
+            return optimizationService.fragment(
+                currentFile, destDir, criterion, value,
+                (done, total) -> publish("Fragmenting… part " + done + "/" + total));
+          }
+
+          @Override
+          protected void process(List<String> chunks) {
+            if (!chunks.isEmpty()) {
+              statusLabel.setText(chunks.get(chunks.size() - 1));
+            }
           }
 
           @Override
@@ -1289,40 +1299,19 @@ public class ParquetEditorPanel extends JPanel {
   }
 
   /**
-   * Consolidates the parquet files found in the dialog's chosen source directory into the
-   * chosen output file.
+   * Routes the Consolidate choice to the tool window hosting this panel, so there is a single
+   * consolidate implementation (which also opens the result in a tab). This panel lives inside
+   * a {@link ParquetToolWindow}, so the ancestor is always found at runtime.
    */
-  private void consolidateFromDialog(OptimizeFileDialog dialog) {
-    File sourceDir = dialog.getConsolidateSourceDir();
-    File outputFile = dialog.getConsolidateOutputFile();
-    List<File> sources = optimizationService.listParquetFiles(sourceDir);
-
+  private void delegateConsolidate(OptimizeFileDialog dialog) {
+    ParquetToolWindow toolWindow =
+        (ParquetToolWindow) SwingUtilities.getAncestorOfClass(ParquetToolWindow.class, this);
+    if (toolWindow == null) {
+      LOGGER.warn("Could not find owning ParquetToolWindow to run consolidate.");
+      return;
+    }
     statusLabel.setText("Consolidating…");
-    SwingWorker<Long, Void> consolidateWorker =
-        new SwingWorker<Long, Void>() {
-          @Override
-          protected Long doInBackground() throws Exception {
-            return optimizationService.consolidate(sources, outputFile);
-          }
-
-          @Override
-          protected void done() {
-            try {
-              get();
-              String message = String.format(
-                  "Consolidated %d files → %s (%s)",
-                  sources.size(), outputFile.getName(), formatFileSize(outputFile.length()));
-              statusLabel.setText(message);
-              Messages.showInfoMessage(message, "Consolidate Complete");
-            } catch (Exception e) {
-              LOGGER.error("Error consolidating Parquet files", e);
-              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-              Messages.showErrorDialog("Error consolidating files: " + errorMessage, "Error");
-              statusLabel.setText("Error consolidating files.");
-            }
-          }
-        };
-    consolidateWorker.execute();
+    toolWindow.runConsolidate(dialog.getConsolidateSourceDir(), dialog.getConsolidateOutputFile());
   }
 
   /**
