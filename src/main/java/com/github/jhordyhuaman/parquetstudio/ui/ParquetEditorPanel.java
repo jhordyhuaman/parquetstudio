@@ -18,7 +18,9 @@ import com.github.jhordyhuaman.parquetstudio.model.ParquetData;
 import com.github.jhordyhuaman.parquetstudio.model.ParquetTableModel;
 import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetEditorService;
+import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
 import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.ui.Messages;
@@ -50,6 +52,7 @@ public class ParquetEditorPanel extends JPanel {
   private static final Logger LOGGER = Logger.getInstance(ParquetEditorPanel.class);
 
   private final ParquetEditorService editorService;
+  private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
   private ParquetTableModel tableModel;
   private JBTable dataTable;
   private JLabel statusLabel;
@@ -60,6 +63,7 @@ public class ParquetEditorPanel extends JPanel {
   private JButton deleteRowButton;
   private JButton deleteColumnButton;
   private JButton saveAsButton;
+  private JButton compactButton;
   private JPanel containerPanel;
   private JPanel dataPanel;
   private JPanel schemaPanel;
@@ -272,9 +276,10 @@ public class ParquetEditorPanel extends JPanel {
   }
 
   /**
-   * Formats file size in human-readable format.
+   * Formats file size in human-readable format. Static and package-visible so other UI classes
+   * (e.g. {@link ParquetToolWindow}) can reuse it instead of duplicating the logic.
    */
-  private String formatFileSize(long bytes) {
+  static String formatFileSize(long bytes) {
     if (bytes < 1024) return bytes + " B";
     int exp = (int) (Math.log(bytes) / Math.log(1024));
     String pre = "KMGTPE".charAt(exp - 1) + "";
@@ -334,6 +339,11 @@ public class ParquetEditorPanel extends JPanel {
     saveAsButton.setToolTipText("Save As...");
     saveAsButton.addActionListener(e -> saveAsParquet());
 
+    // Optimize - opens a dialog offering Compact / Fragment / Consolidate
+    compactButton = new JButton(AllIcons.Actions.Collapseall);
+    compactButton.setToolTipText("Optimize file…");
+    compactButton.addActionListener(e -> openOptimizeDialog());
+
     // Validate Schema button
     JButton validateSchemaButton = new JButton("Validate Schema");
     validateSchemaButton.setToolTipText("Validate Parquet types against a schema file");
@@ -343,6 +353,7 @@ public class ParquetEditorPanel extends JPanel {
     goSchemaButton.addActionListener(e -> changePanel() );
 
     toolbar.add(saveAsButton);
+    toolbar.add(compactButton);
     toolbar.add(validateSchemaButton);
     toolbar.add(goSchemaButton);
 
@@ -533,6 +544,7 @@ public class ParquetEditorPanel extends JPanel {
     if (deleteColumnButton != null) deleteColumnButton.setEnabled(hasData);
     if (deleteRowButton != null) deleteRowButton.setEnabled(hasData);
     if (saveAsButton != null) saveAsButton.setEnabled(hasData);
+    if (compactButton != null) compactButton.setEnabled(hasData);
     if (goSchemaButton != null) goSchemaButton.setEnabled(hasData);
     if (searchField != null) searchField.setEnabled(hasData);
   }
@@ -1181,6 +1193,180 @@ public class ParquetEditorPanel extends JPanel {
       LOGGER.error("Error saving Parquet file", e);
       Messages.showErrorDialog("Error saving file: " + e.getMessage(), "Error");
     }
+  }
+
+  /**
+   * Opens the Optimize dialog (Compact / Fragment / Consolidate) and runs the chosen operation.
+   */
+  private void openOptimizeDialog() {
+    File currentFile = editorService.getCurrentFile();
+    boolean hasFile = currentFile != null && tableModel != null;
+    OptimizeFileDialog dialog =
+        new OptimizeFileDialog(this, hasFile, hasFile);
+    if (!dialog.showAndGet()) {
+      return;
+    }
+    runOptimize(dialog);
+  }
+
+  /**
+   * Executes the operation chosen in an already-confirmed {@link OptimizeFileDialog}.
+   * Exposed so callers hosting this panel (e.g. the tool window) can route a dialog result here.
+   */
+  public void runOptimize(OptimizeFileDialog dialog) {
+    switch (dialog.getOperation()) {
+      case COMPACT:
+        compactFile();
+        break;
+      case FRAGMENT:
+        fragmentFile(dialog);
+        break;
+      case CONSOLIDATE:
+        delegateConsolidate(dialog);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Splits the currently open file into part files per the dialog's chosen criterion.
+   */
+  private void fragmentFile(OptimizeFileDialog dialog) {
+    File currentFile = editorService.getCurrentFile();
+    if (currentFile == null) {
+      return;
+    }
+    File destDir = dialog.getFragmentDestDir();
+    ParquetOptimizationService.FragmentCriterion criterion = dialog.getFragmentCriterion();
+    long value = dialog.getFragmentValue();
+
+    boolean hasExistingParts = optimizationService.listParquetFiles(destDir).stream()
+        .anyMatch(f -> f.getName().startsWith("part-"));
+    if (hasExistingParts) {
+      int overwrite = JOptionPane.showConfirmDialog(
+          this,
+          "The destination directory already contains part-*.parquet files. Continue?",
+          "Confirm Overwrite",
+          JOptionPane.YES_NO_OPTION,
+          JOptionPane.WARNING_MESSAGE);
+      if (overwrite != JOptionPane.YES_OPTION) {
+        return;
+      }
+    }
+
+    statusLabel.setText("Fragmenting…");
+    SwingWorker<List<File>, String> fragmentWorker =
+        new SwingWorker<List<File>, String>() {
+          @Override
+          protected List<File> doInBackground() throws Exception {
+            return optimizationService.fragment(
+                currentFile, destDir, criterion, value,
+                (done, total) -> publish("Fragmenting… part " + done + "/" + total));
+          }
+
+          @Override
+          protected void process(List<String> chunks) {
+            if (!chunks.isEmpty()) {
+              statusLabel.setText(chunks.get(chunks.size() - 1));
+            }
+          }
+
+          @Override
+          protected void done() {
+            try {
+              List<File> parts = get();
+              long totalSize = 0;
+              for (File part : parts) {
+                totalSize += part.length();
+              }
+              String message = String.format(
+                  "Fragmented into %d part(s), total size %s, in %s",
+                  parts.size(), formatFileSize(totalSize), destDir.getName());
+              statusLabel.setText(message);
+              Messages.showInfoMessage(message, "Fragment Complete");
+            } catch (Exception e) {
+              LOGGER.error("Error fragmenting Parquet file", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog(
+                  "Error fragmenting file: " + errorMessage + " (the source file was not modified)",
+                  "Error");
+              statusLabel.setText("Error fragmenting file.");
+            }
+          }
+        };
+    fragmentWorker.execute();
+  }
+
+  /**
+   * Routes the Consolidate choice to the tool window hosting this panel, so there is a single
+   * consolidate implementation (which also opens the result in a tab). This panel lives inside
+   * a {@link ParquetToolWindow}, so the ancestor is always found at runtime.
+   */
+  private void delegateConsolidate(OptimizeFileDialog dialog) {
+    ParquetToolWindow toolWindow =
+        (ParquetToolWindow) SwingUtilities.getAncestorOfClass(ParquetToolWindow.class, this);
+    if (toolWindow == null) {
+      LOGGER.warn("Could not find owning ParquetToolWindow to run consolidate.");
+      return;
+    }
+    statusLabel.setText("Consolidating…");
+    toolWindow.runConsolidate(
+        dialog.getConsolidateSourceDir(),
+        dialog.getConsolidateOutputFile(),
+        () -> statusLabel.setText("Ready."));
+  }
+
+  /**
+   * Rewrites the currently open file in place with ZSTD compression and reports the size change.
+   */
+  private void compactFile() {
+    File currentFile = editorService.getCurrentFile();
+    if (currentFile == null || tableModel == null) {
+      return;
+    }
+
+    long sizeBefore = currentFile.length();
+    statusLabel.setText("Compacting file...");
+
+    SwingWorker<Void, Void> compactWorker =
+        new SwingWorker<Void, Void>() {
+          @Override
+          protected Void doInBackground() throws Exception {
+            editorService.saveParquetFileWithCompression(currentFile, "ZSTD");
+            return null;
+          }
+
+          @Override
+          protected void done() {
+            try {
+              get();
+              markSaved();
+
+              long sizeAfter = currentFile.length();
+              String message;
+              if (sizeAfter < sizeBefore) {
+                int percent = (int) Math.round((1.0 - ((double) sizeAfter / sizeBefore)) * 100);
+                message = String.format(
+                    "Compacted: %s → %s (-%d%%)",
+                    formatFileSize(sizeBefore), formatFileSize(sizeAfter), percent);
+              } else {
+                message = String.format(
+                    "Compacted: size unchanged (%s) — file was already compact",
+                    formatFileSize(sizeAfter));
+              }
+
+              statusLabel.setText(message);
+              Messages.showInfoMessage(message, "Compact Complete");
+            } catch (Exception e) {
+              LOGGER.error("Error compacting Parquet file", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog("Error compacting file: " + errorMessage, "Error");
+              statusLabel.setText("Error compacting file.");
+            }
+          }
+        };
+    compactWorker.execute();
   }
 
   private TableCellEditor createTextCellEditor() {

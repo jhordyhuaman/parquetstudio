@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Service for reading and writing Parquet files using DuckDB.
@@ -30,6 +31,8 @@ public class DuckDBParquetService {
   private static final Logger LOGGER = Logger.getInstance(DuckDBParquetService.class);
   private static final String DUCKDB_JDBC_URL = "jdbc:duckdb:";
   private static volatile boolean driverLoaded = false;
+  private static final Set<String> ALLOWED_COMPRESSION_CODECS =
+      Set.of("ZSTD", "SNAPPY", "GZIP", "UNCOMPRESSED");
 
   private final List<String> lastSaveConversionWarnings = new ArrayList<>();
 
@@ -128,19 +131,33 @@ public class DuckDBParquetService {
    * Saves ParquetData to a new Parquet file.
    */
   public void saveParquet(File file, ParquetData data) throws Exception {
+    saveParquet(file, data, null);
+  }
+
+  /**
+   * Saves ParquetData to a new Parquet file with the given compression codec.
+   *
+   * @param compression the Parquet compression codec to use (e.g. "ZSTD"), or null to use
+   *     DuckDB's default (Snappy). Must be one of {@link #ALLOWED_COMPRESSION_CODECS}.
+   */
+  public void saveParquet(File file, ParquetData data, String compression) throws Exception {
     LOGGER.info("Saving Parquet file: " + file.getAbsolutePath());
 
     if (data.getColumnNames().isEmpty()) {
       throw new IllegalArgumentException("No columns to save");
     }
 
+    if (compression != null && !ALLOWED_COMPRESSION_CODECS.contains(compression.toUpperCase(Locale.ROOT))) {
+      throw new IllegalArgumentException("Unknown compression codec: " + compression);
+    }
+
     ensureDriverLoaded();
 
     lastSaveConversionWarnings.clear();
-    SafeParquetPath.writeThenMove(file, actualTarget -> doSaveParquet(actualTarget, data));
+    SafeParquetPath.writeThenMove(file, actualTarget -> doSaveParquet(actualTarget, data, compression));
   }
 
-  private void doSaveParquet(File file, ParquetData data) throws Exception {
+  private void doSaveParquet(File file, ParquetData data, String compression) throws Exception {
     LOGGER.debug("Attempting to create connection to: " + DUCKDB_JDBC_URL);
     try (Connection conn = DriverManager.getConnection(DUCKDB_JDBC_URL)) {
       LOGGER.debug("Connection established successfully");
@@ -198,8 +215,11 @@ public class DuckDBParquetService {
       }
 
       // Export table to Parquet
+      String compressionOption = compression != null
+          ? ", COMPRESSION " + compression.toUpperCase(Locale.ROOT)
+          : "";
       String exportQuery = "COPY (SELECT * FROM " + tempTable + ") TO '"
-          + file.getAbsolutePath().replace("'", "''") + "' (FORMAT PARQUET)";
+          + file.getAbsolutePath().replace("'", "''") + "' (FORMAT PARQUET" + compressionOption + ")";
       try (Statement st = conn.createStatement()) {
         st.execute(exportQuery);
       }
