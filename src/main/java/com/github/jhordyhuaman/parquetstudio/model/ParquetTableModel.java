@@ -291,6 +291,37 @@ public class ParquetTableModel extends AbstractTableModel {
     fireTableRowsInserted(newRowIndex, newRowIndex);
   }
 
+  /**
+   * Appends a row with the given values (one per column, in column order) and fires the
+   * corresponding table-model event so listeners (e.g. the dirty-flag tracker) are notified.
+   *
+   * @param values the cell values for the new row, in column order
+   */
+  public void addRow(List<Object> values) {
+    rows.add(new ArrayList<>(values));
+    int newRowIndex = rows.size() - 1;
+    fireTableRowsInserted(newRowIndex, newRowIndex);
+  }
+
+  /**
+   * Appends multiple rows in one batch and fires a single {@code fireTableRowsInserted} for the
+   * whole range, instead of one event per row. Used for bulk appends (e.g. synthetic data) so
+   * the UI/dirty-flag listener isn't hammered with thousands of individual events.
+   *
+   * @param newRows the rows to append, each one value per column in column order
+   */
+  public void addRows(List<List<Object>> newRows) {
+    if (newRows.isEmpty()) {
+      return;
+    }
+    int firstIndex = rows.size();
+    for (List<Object> row : newRows) {
+      rows.add(new ArrayList<>(row));
+    }
+    int lastIndex = rows.size() - 1;
+    fireTableRowsInserted(firstIndex, lastIndex);
+  }
+
   public void deleteRow(int rowIndex) {
     if (rowIndex >= 0 && rowIndex < rows.size()) {
       rows.remove(rowIndex);

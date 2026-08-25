@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-25
+
+### Added
+- **Synthetic Data Generator** - Create realistic Parquet files from a schema (local file or URL with token)
+- **Schema Sources** - Load schema from local Parquet file, URL endpoint, or currently open file
+- **Remote Schema Support** - Fetch schemas from HTTP URLs with optional authentication (Bearer or Artifactory JFrog tokens)
+- **Data Generation Parameters** - Configure row count (1–1,000,000), null percentage (0–100), and deterministic seed
+- **Add Synthetic Rows** - Append realistic test rows to the currently open Parquet file
+- **Type-aware Generation** - Heuristic-based generation for common column patterns (email, codes, amounts, dates, etc.)
+- **Fully Offline** - Generation is deterministic and does not require internet connection after schema is loaded
+
+### Technical
+- New `SyntheticDataGenerator` service with type heuristics for realistic data
+- New `RemoteSchemaService` with JDK HttpClient for secure remote schema fetching
+- Pluggable generation logic supporting all Parquet types; unknown types generate NULL columns
+
+[1.8.0]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.8.0
+
 ## [1.7.0] - 2026-08-25
 
 ### Added

@@ -181,6 +181,19 @@ public class ParquetEditorService {
   }
 
   /**
+   * Appends synthetic rows (already typed to match the table model's columns) to the table
+   * model, firing table-model events so the editor's dirty flag sets automatically.
+   *
+   * @param rows the rows to append, each one value per column in column order
+   * @throws IllegalStateException if no data is loaded
+   */
+  public void addRows(java.util.List<java.util.List<Object>> rows) throws IllegalStateException {
+    validateDataLoaded();
+    tableModel.addRows(rows);
+    LOGGER.info("Added " + rows.size() + " synthetic rows");
+  }
+
+  /**
    * Adds a new column to the table model.
    *
    * @param columnName the name of the new column

@@ -20,6 +20,8 @@ import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetEditorService;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
 import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
+import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator;
+import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator.GenerationResult;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
@@ -53,6 +55,11 @@ public class ParquetEditorPanel extends JPanel {
 
   private final ParquetEditorService editorService;
   private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
+  private final SyntheticDataGenerator syntheticDataGenerator = new SyntheticDataGenerator();
+  // Spec default null ratio (5%); the "Add synthetic rows" mini-dialog intentionally offers no
+  // null% control, unlike the full Generate Data dialog.
+  private static final double DEFAULT_NULL_RATIO = 0.05;
+  private JButton addSyntheticRowsButton;
   private ParquetTableModel tableModel;
   private JBTable dataTable;
   private JLabel statusLabel;
@@ -352,10 +359,15 @@ public class ParquetEditorPanel extends JPanel {
     goSchemaButton = new JButton("View Schema");
     goSchemaButton.addActionListener(e -> changePanel() );
 
+    addSyntheticRowsButton = new JButton("Add synthetic rows");
+    addSyntheticRowsButton.setToolTipText("Generate and append realistic test rows to this file");
+    addSyntheticRowsButton.addActionListener(e -> addSyntheticRows());
+
     toolbar.add(saveAsButton);
     toolbar.add(compactButton);
     toolbar.add(validateSchemaButton);
     toolbar.add(goSchemaButton);
+    toolbar.add(addSyntheticRowsButton);
 
     updateButtonStates(false);
 
@@ -547,6 +559,7 @@ public class ParquetEditorPanel extends JPanel {
     if (compactButton != null) compactButton.setEnabled(hasData);
     if (goSchemaButton != null) goSchemaButton.setEnabled(hasData);
     if (searchField != null) searchField.setEnabled(hasData);
+    if (addSyntheticRowsButton != null) addSyntheticRowsButton.setEnabled(hasData);
   }
 
   /**
@@ -775,6 +788,90 @@ public class ParquetEditorPanel extends JPanel {
       LOGGER.error("Error adding row", e);
       Messages.showErrorDialog("Error adding row: " + e.getMessage(), "Error");
     }
+  }
+
+  /**
+   * Prompts for a row count and an optional seed, generates that many synthetic rows against
+   * the currently open file's columns/types, and appends them through the table model so
+   * change events fire and the dirty flag sets automatically.
+   */
+  private void addSyntheticRows() {
+    if (tableModel == null) {
+      Messages.showWarningDialog("Please load a Parquet file first.", "No File Loaded");
+      return;
+    }
+
+    JTextField rowCountField = new JTextField("100", 10);
+    JTextField seedFieldPrompt = new JTextField(10);
+    JPanel promptPanel = new JPanel(new GridLayout(2, 2, 5, 5));
+    promptPanel.add(new JLabel("Row count:"));
+    promptPanel.add(rowCountField);
+    promptPanel.add(new JLabel("Seed (optional):"));
+    promptPanel.add(seedFieldPrompt);
+
+    int choice = JOptionPane.showConfirmDialog(
+        this, promptPanel, "Add Synthetic Rows", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+    if (choice != JOptionPane.OK_OPTION) {
+      return;
+    }
+
+    int rowCount;
+    try {
+      rowCount = Integer.parseInt(rowCountField.getText().trim());
+      if (rowCount <= 0 || rowCount > 1_000_000) {
+        throw new NumberFormatException("Row count must be between 1 and 1,000,000.");
+      }
+    } catch (NumberFormatException e) {
+      Messages.showErrorDialog("Row count must be a whole number between 1 and 1,000,000.", "Error");
+      return;
+    }
+
+    Long seed = null;
+    String seedText = seedFieldPrompt.getText().trim();
+    if (!seedText.isEmpty()) {
+      try {
+        seed = Long.parseLong(seedText);
+      } catch (NumberFormatException e) {
+        Messages.showErrorDialog("Seed must be a whole number.", "Error");
+        return;
+      }
+    }
+
+    List<String> columnNames = tableModel.getColumnNames();
+    List<String> columnTypes = tableModel.getColumnTypes();
+    Long finalSeed = seed;
+    statusLabel.setText("Generating " + rowCount + " rows…");
+
+    SwingWorker<GenerationResult, Void> worker = new SwingWorker<GenerationResult, Void>() {
+      @Override
+      protected GenerationResult doInBackground() {
+        // The mini-dialog intentionally offers no null% control; use the spec default.
+        return syntheticDataGenerator.generate(
+            columnNames, columnTypes, rowCount, finalSeed, DEFAULT_NULL_RATIO);
+      }
+
+      @Override
+      protected void done() {
+        try {
+          GenerationResult result = get();
+          editorService.addRows(result.getData().getRows());
+
+          updateStatusLabel();
+          if (!result.getWarnings().isEmpty()) {
+            Messages.showWarningDialog(
+                "Added " + rowCount + " synthetic rows.\n\nWarnings:\n"
+                    + String.join("\n", result.getWarnings()),
+                "Synthetic Rows Added");
+          }
+        } catch (Exception e) {
+          LOGGER.error("Error adding synthetic rows", e);
+          String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+          Messages.showErrorDialog("Error adding synthetic rows: " + errorMessage, "Error");
+          updateStatusLabel();
+        }
+      }
+    };
+    worker.execute();
   }
 
   private void addColumn() {
