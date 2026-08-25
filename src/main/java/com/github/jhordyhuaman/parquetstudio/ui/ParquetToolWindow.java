@@ -13,7 +13,9 @@
  */
 package com.github.jhordyhuaman.parquetstudio.ui;
 
+import com.github.jhordyhuaman.parquetstudio.Constants;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.IconLoader;
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -21,10 +23,6 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
 
@@ -33,14 +31,10 @@ import javax.swing.filechooser.FileFilter;
  */
 public class ParquetToolWindow extends JPanel {
   private static final Logger LOGGER = Logger.getInstance(ParquetToolWindow.class);
-  
-  // Track files currently being opened to prevent duplicates
-  private static final Set<String> openingFiles = ConcurrentHashMap.newKeySet();
 
   private JTabbedPane tabbedPane;
   private JPanel welcomePanel;
   private JPanel contentPanel;
-  private final Map<ParquetEditorPanel, Integer> panelToTabIndex = new HashMap<>();
   private JButton openButton;
 
   public ParquetToolWindow() {
@@ -235,151 +229,49 @@ public class ParquetToolWindow extends JPanel {
    * @param file the Parquet file to open
    */
   private void openParquetFileInTab(File file) {
-    // Get normalized file path for tracking (must be final for lambda)
-    final String filePath = getNormalizedPath(file);
-    
-    // Synchronize to prevent concurrent openings
-    synchronized (ParquetToolWindow.class) {
-      // Check if file is currently being opened
-      if (openingFiles.contains(filePath)) {
-        LOGGER.info("File is already being opened, skipping: " + file.getName());
-        return;
-      }
-      
-      // Check if file is already open in a tab
-      for (int i = 0; i < tabbedPane.getTabCount(); i++) {
-        Component component = tabbedPane.getComponentAt(i);
-        if (component instanceof ParquetEditorPanel) {
-          ParquetEditorPanel panel = (ParquetEditorPanel) component;
-          if (panel.hasFile()) {
-            File currentFile = panel.getCurrentFile();
-            if (currentFile != null) {
-              try {
-                String currentFilePath = currentFile.getCanonicalPath();
-                if (currentFilePath.equals(filePath)) {
-                  // File already open, switch to that tab
-                  final int existingIndex = i;
-                  SwingUtilities.invokeLater(() -> {
-                    if (existingIndex < tabbedPane.getTabCount()) {
-                      tabbedPane.setSelectedIndex(existingIndex);
-                    }
-                  });
-                  LOGGER.info("File already open, switching to existing tab: " + file.getName());
-                  return;
-                }
-              } catch (IOException e) {
-                // If canonical path fails, fall back to equals
-                if (currentFile.getAbsolutePath().equals(file.getAbsolutePath())) {
-                  final int existingIndex = i;
-                  SwingUtilities.invokeLater(() -> {
-                    if (existingIndex < tabbedPane.getTabCount()) {
-                      tabbedPane.setSelectedIndex(existingIndex);
-                    }
-                  });
-                  LOGGER.info("File already open, switching to existing tab: " + file.getName());
-                  return;
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      // Mark file as being opened
-      openingFiles.add(filePath);
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> openParquetFileInTab(file));
+      return;
     }
-    
+    String filePath = getNormalizedPath(file);
+
+    int existing = findTabIndexForPath(filePath);
+    if (existing >= 0) {
+      showTabsPanel();
+      tabbedPane.setSelectedIndex(existing);
+      return;
+    }
+
+    ParquetEditorPanel editorPanel = new ParquetEditorPanel();
+    showTabsPanel();
+    tabbedPane.addTab(file.getName() + "  ×", null, editorPanel, file.getAbsolutePath());
+    tabbedPane.setSelectedIndex(tabbedPane.getTabCount() - 1);
+    // Load AFTER the tab exists so failures render inside the tab, not before it.
     try {
-      // Create new editor panel
-      ParquetEditorPanel editorPanel = new ParquetEditorPanel();
       editorPanel.loadParquetFile(file);
-
-      // Add to tabbed pane (must be on EDT)
-      SwingUtilities.invokeLater(() -> {
-        try {
-          synchronized (ParquetToolWindow.class) {
-            // Double-check after loading (file might have been opened by another thread)
-            for (int i = 0; i < tabbedPane.getTabCount(); i++) {
-              Component component = tabbedPane.getComponentAt(i);
-              if (component instanceof ParquetEditorPanel) {
-                ParquetEditorPanel panel = (ParquetEditorPanel) component;
-                if (panel.hasFile()) {
-                  File currentFile = panel.getCurrentFile();
-                  if (currentFile != null) {
-                    try {
-                      String currentFilePath = currentFile.getCanonicalPath();
-                      if (currentFilePath.equals(filePath)) {
-                        // File was opened by another thread, just switch to it
-                        final int existingTabIndex = i;
-                        openingFiles.remove(filePath);
-                        showTabsPanel();
-                        // Defer selection to avoid layout recursion
-                        SwingUtilities.invokeLater(() -> {
-                          if (existingTabIndex < tabbedPane.getTabCount()) {
-                            tabbedPane.setSelectedIndex(existingTabIndex);
-                          }
-                        });
-                        LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
-                        return;
-                      }
-                    } catch (IOException e) {
-                      if (currentFile.getAbsolutePath().equals(file.getAbsolutePath())) {
-                        final int existingTabIndex = i;
-                        openingFiles.remove(filePath);
-                        showTabsPanel();
-                        // Defer selection to avoid layout recursion
-                        SwingUtilities.invokeLater(() -> {
-                          if (existingTabIndex < tabbedPane.getTabCount()) {
-                            tabbedPane.setSelectedIndex(existingTabIndex);
-                          }
-                        });
-                        LOGGER.info("File opened by another thread, switching to existing tab: " + file.getName());
-                        return;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            // Show tabs panel BEFORE adding the tab to prevent layout issues
-            showTabsPanel();
-
-            // Add to tabbed pane with title that includes close indicator
-            // Format: "filename  ×" where × is the close indicator
-            String tabTitle = file.getName();
-            String tabTitleWithClose = tabTitle + "  ×";
-            tabbedPane.addTab(tabTitleWithClose, null, editorPanel, file.getAbsolutePath());
-
-            final int tabIndex = tabbedPane.getTabCount() - 1;
-
-            // Store mapping
-            panelToTabIndex.put(editorPanel, tabIndex);
-
-            // Remove from opening set
-            openingFiles.remove(filePath);
-
-            LOGGER.info("Opened file in new tab: " + file.getName());
-
-            // Defer tab selection to avoid layout recursion issues
-            SwingUtilities.invokeLater(() -> {
-              if (tabIndex < tabbedPane.getTabCount()) {
-                tabbedPane.setSelectedIndex(tabIndex);
-              }
-            });
-          }
-        } catch (Exception ex) {
-          LOGGER.error("Error adding tab for file: " + file.getName(), ex);
-          openingFiles.remove(filePath);
-        }
-      });
+      LOGGER.info("Opened file in new tab: " + file.getName());
     } catch (Exception e) {
-      // Remove from opening set on error
-      synchronized (ParquetToolWindow.class) {
-        openingFiles.remove(filePath);
-      }
+      tabbedPane.remove(editorPanel);
+      updateView();
       LOGGER.error("Error opening file: " + file.getName(), e);
+      Messages.showErrorDialog(
+          String.format(Constants.Message.ERROR_LOADING_FILE, e.getMessage()), "Error");
     }
+  }
+
+  private int findTabIndexForPath(String normalizedPath) {
+    for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+      Component component = tabbedPane.getComponentAt(i);
+      if (component instanceof ParquetEditorPanel) {
+        ParquetEditorPanel panel = (ParquetEditorPanel) component;
+        File current = panel.hasFile() ? panel.getCurrentFile()
+            : panel.getLoadingOrCurrentFile();
+        if (current != null && getNormalizedPath(current).equals(normalizedPath)) {
+          return i;
+        }
+      }
+    }
+    return -1;
   }
 
   /**
@@ -395,19 +287,25 @@ public class ParquetToolWindow extends JPanel {
     Component component = tabbedPane.getComponentAt(tabIndex);
     if (component instanceof ParquetEditorPanel) {
       ParquetEditorPanel panel = (ParquetEditorPanel) component;
-      
-      // Remove from mapping
-      panelToTabIndex.remove(panel);
-      
+
+      if (panel.isDirty()) {
+        int choice = javax.swing.JOptionPane.showConfirmDialog(
+            this,
+            "\"" + panel.getDisplayName() + "\" has unsaved changes. Close anyway?",
+            "Unsaved Changes",
+            javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.WARNING_MESSAGE);
+        if (choice != javax.swing.JOptionPane.YES_OPTION) {
+          return;
+        }
+      }
+
       // Remove tab
       tabbedPane.removeTabAt(tabIndex);
-      
+
       // Update tab components for remaining tabs (indices may have changed)
       updateTabComponents();
-      
-      // Update mappings for remaining tabs
-      updateTabMappings();
-      
+
       // Update view (show welcome panel if no tabs left)
       updateView();
 
@@ -429,20 +327,6 @@ public class ParquetToolWindow extends JPanel {
       }
     }
   }
-
-  /**
-   * Updates the mapping between panels and tab indices after tab removal.
-   */
-  private void updateTabMappings() {
-    panelToTabIndex.clear();
-    for (int i = 0; i < tabbedPane.getTabCount(); i++) {
-      Component component = tabbedPane.getComponentAt(i);
-      if (component instanceof ParquetEditorPanel) {
-        panelToTabIndex.put((ParquetEditorPanel) component, i);
-      }
-    }
-  }
-
 
   /**
    * Gets the number of open tabs.

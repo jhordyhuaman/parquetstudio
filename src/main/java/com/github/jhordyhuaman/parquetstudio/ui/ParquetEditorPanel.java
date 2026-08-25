@@ -79,6 +79,22 @@ public class ParquetEditorPanel extends JPanel {
   // Track the file being loaded (before it's fully loaded into the service)
   private File loadingFile;
 
+  private volatile boolean dirty = false;
+  private final javax.swing.event.TableModelListener dirtyListener = e -> dirty = true;
+
+  public boolean isDirty() {
+    return dirty;
+  }
+
+  public void markSaved() {
+    dirty = false;
+  }
+
+  /** Returns the current table model, for tests and callers needing direct access. */
+  public ParquetTableModel getTableModel() {
+    return tableModel;
+  }
+
   public ParquetEditorPanel() {
     this(true);
   }
@@ -106,6 +122,14 @@ public class ParquetEditorPanel extends JPanel {
    */
   public boolean hasFile() {
     return editorService.hasFile() || loadingFile != null;
+  }
+
+  /** Returns the loaded file, or the file currently being loaded, or null. */
+  public File getLoadingOrCurrentFile() {
+    if (hasFile()) {
+      return getCurrentFile();
+    }
+    return loadingFile;
   }
 
   /**
@@ -611,6 +635,8 @@ public class ParquetEditorPanel extends JPanel {
                 ParquetData data = get();
                 tableModel = editorService.initializeTableModel(data);
                 dataTable.setModel(tableModel);
+                tableModel.addTableModelListener(dirtyListener);
+                dirty = false;
 
                 // Configure cell editor for all columns (especially needed for DATE and TIMESTAMP)
                 configureCellEditors();
@@ -1128,9 +1154,18 @@ public class ParquetEditorPanel extends JPanel {
               protected void done() {
                 try {
                   get();
+                  markSaved();
                   statusLabel.setText("File saved: " + outputFile.getName());
                   Messages.showInfoMessage(
                       "File saved successfully: " + outputFile.getPath(), "Success");
+                  java.util.List<String> warnings =
+                      editorService.getLastSaveConversionWarnings();
+                  if (!warnings.isEmpty()) {
+                    Messages.showWarningDialog(
+                        "Saved, but some values could not be converted and were written as NULL:\n\n"
+                            + String.join("\n", warnings),
+                        "Save Completed With Warnings");
+                  }
                 } catch (Exception e) {
                   LOGGER.error("Error saving Parquet file", e);
                   Messages.showErrorDialog("Error saving file: " + e.getCause().getMessage(), "Error");

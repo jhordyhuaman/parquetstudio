@@ -14,6 +14,7 @@
 package com.github.jhordyhuaman.parquetstudio.factory;
 
 import com.github.jhordyhuaman.parquetstudio.Constants;
+import com.github.jhordyhuaman.parquetstudio.service.ParquetStudioWindowService;
 import com.github.jhordyhuaman.parquetstudio.ui.ParquetToolWindow;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
@@ -30,8 +31,6 @@ import com.intellij.openapi.wm.ToolWindowManager;
 import java.awt.*;
 import java.beans.PropertyChangeListener;
 import java.io.File;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,9 +44,6 @@ public class ParquetFileEditor extends UserDataHolderBase implements FileEditor 
 
   private final Project project;
   private final VirtualFile file;
-  private final AtomicBoolean fileOpened = new AtomicBoolean(false);
-  private final AtomicBoolean openingInProgress = new AtomicBoolean(false);
-  private final AtomicInteger retryCount = new AtomicInteger(0);
   private final JPanel loadingPanel;
 
   public ParquetFileEditor(@NotNull Project project, @NotNull VirtualFile file) {
@@ -116,7 +112,7 @@ public class ParquetFileEditor extends UserDataHolderBase implements FileEditor 
     panel.add(iconLabel, gbc);
 
     gbc.gridy = 1;
-    JLabel loadingLabel = new JLabel(Constants.Message.LOADING_INITIALIZING);
+    JLabel loadingLabel = new JLabel(Constants.Message.OPENED_IN_TOOL_WINDOW);
     loadingLabel.setFont(loadingLabel.getFont().deriveFont(Font.BOLD, 14f));
     panel.add(loadingLabel, gbc);
 
@@ -126,140 +122,46 @@ public class ParquetFileEditor extends UserDataHolderBase implements FileEditor 
     panel.add(fileLabel, gbc);
 
     gbc.gridy = 3;
-    JProgressBar progressBar = new JProgressBar();
-    progressBar.setIndeterminate(true);
-    progressBar.setPreferredSize(new Dimension(200, 20));
-    panel.add(progressBar, gbc);
+    JButton showButton = new JButton("Show in Parquet Studio");
+    showButton.addActionListener(e -> openInParquetStudio());
+    panel.add(showButton, gbc);
 
     return panel;
   }
 
   private void openInParquetStudio() {
-    // Prevent multiple openings
-    if (fileOpened.get() || !openingInProgress.compareAndSet(false, true)) {
-      LOGGER.info("Skipping open - already opened or opening in progress: " + file.getName());
-      return;
-    }
-    
-    // Use ApplicationManager for proper threading in IntelliJ
     ApplicationManager.getApplication().invokeLater(() -> {
-      tryOpenWithRetry();
-    });
-  }
-
-  private void tryOpenWithRetry() {
-    int currentRetry = retryCount.incrementAndGet();
-
-    try {
-      ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
-      ToolWindow toolWindow = toolWindowManager.getToolWindow("Parquet Studio");
-
+      if (project.isDisposed()) {
+        return;
+      }
+      ToolWindow toolWindow =
+          ToolWindowManager.getInstance(project).getToolWindow("Parquet Studio");
       if (toolWindow == null) {
-        LOGGER.warn("Parquet Studio tool window not found (attempt " + currentRetry + "/" + Constants.MAX_OPEN_RETRIES + ")");
-
-        if (currentRetry < Constants.MAX_OPEN_RETRIES) {
-          // Schedule retry
-          Timer retryTimer = new Timer(Constants.RETRY_DELAY_MS, e -> {
-            ApplicationManager.getApplication().invokeLater(this::tryOpenWithRetry);
-          });
-          retryTimer.setRepeats(false);
-          retryTimer.start();
-          return;
-        } else {
-          // Max retries reached
-          openingInProgress.set(false);
-          showErrorNotification(Constants.Message.ERROR_OPENING_TOOL_WINDOW);
-          return;
-        }
+        showErrorNotification(Constants.Message.ERROR_OPENING_TOOL_WINDOW);
+        return;
       }
-
-      // Tool window found, activate and open file
       toolWindow.activate(() -> {
-        openFileInToolWindow(toolWindow);
-      }, true);
-
-    } catch (Exception e) {
-      LOGGER.error("Error opening file in Parquet Studio (attempt " + currentRetry + ")", e);
-
-      if (currentRetry < Constants.MAX_OPEN_RETRIES) {
-        // Schedule retry
-        Timer retryTimer = new Timer(Constants.RETRY_DELAY_MS, ex -> {
-          ApplicationManager.getApplication().invokeLater(this::tryOpenWithRetry);
-        });
-        retryTimer.setRepeats(false);
-        retryTimer.start();
-      } else {
-        openingInProgress.set(false);
-        showErrorNotification(String.format(Constants.Message.ERROR_LOADING_FILE, e.getMessage()));
-      }
-    }
-  }
-
-  private void openFileInToolWindow(@NotNull ToolWindow toolWindow) {
-    try {
-      JComponent content = toolWindow.getComponent();
-      if (content == null) {
-        LOGGER.warn("Tool window content is null");
-        handleOpenFailure();
-        return;
-      }
-
-      ParquetToolWindow parquetToolWindow = findParquetToolWindowRecursive(content);
-
-      if (parquetToolWindow == null) {
-        LOGGER.warn("Could not find ParquetToolWindow component");
-        handleOpenFailure();
-        return;
-      }
-
-      // Open the file
-      File physicalFile = new File(file.getPath());
-      parquetToolWindow.openFileInTab(physicalFile);
-
-      fileOpened.set(true);
-      openingInProgress.set(false);
-
-      LOGGER.info("Successfully opened file in Parquet Studio: " + file.getName());
-
-    } catch (Exception e) {
-      LOGGER.error("Error opening file in tool window", e);
-      handleOpenFailure();
-    }
-  }
-
-  private void handleOpenFailure() {
-    int currentRetry = retryCount.get();
-
-    if (currentRetry < Constants.MAX_OPEN_RETRIES) {
-      // Schedule retry
-      Timer retryTimer = new Timer(Constants.RETRY_DELAY_MS, e -> {
-        ApplicationManager.getApplication().invokeLater(this::tryOpenWithRetry);
-      });
-      retryTimer.setRepeats(false);
-      retryTimer.start();
-    } else {
-      openingInProgress.set(false);
-      showErrorNotification(Constants.Message.ERROR_OPENING_TOOL_WINDOW);
-    }
-  }
-
-  @Nullable
-  private ParquetToolWindow findParquetToolWindowRecursive(@NotNull JComponent component) {
-    if (component instanceof ParquetToolWindow) {
-      return (ParquetToolWindow) component;
-    }
-    
-    for (int i = 0; i < component.getComponentCount(); i++) {
-      Component child = component.getComponent(i);
-      if (child instanceof JComponent) {
-        ParquetToolWindow found = findParquetToolWindowRecursive((JComponent) child);
-        if (found != null) {
-          return found;
+        ParquetToolWindow panel =
+            ParquetStudioWindowService.getInstance(project).getPanel();
+        if (panel == null) {
+          // Factory runs during activate(); content not created yet on this EDT pass.
+          ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) {
+              return;
+            }
+            ParquetToolWindow retryPanel =
+                ParquetStudioWindowService.getInstance(project).getPanel();
+            if (retryPanel != null) {
+              retryPanel.openFileInTab(new File(file.getPath()));
+            } else {
+              showErrorNotification(Constants.Message.ERROR_OPENING_TOOL_WINDOW);
+            }
+          });
+          return;
         }
-      }
-    }
-    
-    return null;
+        panel.openFileInTab(new File(file.getPath()));
+      }, true);
+    });
   }
 
   /**
@@ -364,11 +266,8 @@ public class ParquetFileEditor extends UserDataHolderBase implements FileEditor 
 
   @Override
   public void selectNotify() {
-    // Only open if not already opened (to prevent multiple openings)
-    if (!fileOpened.get() && !openingInProgress.get()) {
-      if (validateFile()) {
-        openInParquetStudio();
-      }
+    if (validateFile()) {
+      openInParquetStudio();
     }
   }
 

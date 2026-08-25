@@ -51,6 +51,10 @@ public class ParquetEditorService {
     return data;
   }
 
+  public List<String> getLastSaveConversionWarnings() {
+    return duckDBService.getLastSaveConversionWarnings();
+  }
+
     public String generateTransformSchemaString() throws Exception {
       return this.dataSchemaService.generateTransformSchemaString();
     }

@@ -165,5 +165,72 @@ class DuckDBParquetServiceTest {
     assertThat(data.getRows()).isEmpty();
     assertThat(data.getColumnNames()).hasSize(1);
   }
+
+  @TempDir
+  java.nio.file.Path safePathTempDir;
+
+  @Test
+  void loadsParquetFileWhoseNameContainsGlobCharacters() throws Exception {
+    java.io.File source = new java.io.File("src/test/resources/parquet/logical_date.parquet");
+    java.io.File globNamed = safePathTempDir.resolve("copia [1].parquet").toFile();
+    java.nio.file.Files.copy(source.toPath(), globNamed.toPath());
+
+    ParquetData data = new DuckDBParquetService().loadParquet(globNamed);
+
+    assertThat(data.getRows()).isNotEmpty();
+    assertThat(data.getColumnNames()).isNotEmpty();
+  }
+
+  @Test
+  void savesParquetFileWhoseNameContainsGlobCharacters() throws Exception {
+    java.io.File source = new java.io.File("src/test/resources/parquet/logical_date.parquet");
+    DuckDBParquetService service = new DuckDBParquetService();
+    ParquetData data = service.loadParquet(source);
+
+    java.io.File target = safePathTempDir.resolve("salida [x].parquet").toFile();
+    service.saveParquet(target, data);
+
+    assertThat(target).exists();
+    ParquetData reloaded = service.loadParquet(target);
+    assertThat(reloaded.getRows()).hasSameSizeAs(data.getRows());
+  }
+
+  @Test
+  void allNullDecimalColumnKeepsTypeAndRowCountOnSave() throws Exception {
+    java.util.List<String> names = java.util.List.of("id", "amount");
+    java.util.List<String> types = java.util.List.of("INTEGER", "DECIMAL(23,10)");
+    java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
+    rows.add(java.util.Arrays.asList(1, null));
+    rows.add(java.util.Arrays.asList(2, null));
+    ParquetData data = new ParquetData(names, types, rows);
+
+    java.io.File target = safePathTempDir.resolve("allnull.parquet").toFile();
+    DuckDBParquetService service = new DuckDBParquetService();
+    service.saveParquet(target, data);
+
+    ParquetData reloaded = service.loadParquet(target);
+    assertThat(reloaded.getRows()).hasSize(2);                 // no dummy row leaked
+    assertThat(reloaded.getColumnTypes().get(1)).startsWith("DECIMAL(23,10)");
+    assertThat(reloaded.getColumnTypes().get(0)).isEqualTo("INTEGER");
+  }
+
+  @Test
+  void reportsValuesSilentlyConvertedToNullOnSave() throws Exception {
+    java.util.List<String> names = java.util.List.of("id", "amount");
+    java.util.List<String> types = java.util.List.of("INTEGER", "DECIMAL(10,2)");
+    java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
+    rows.add(java.util.Arrays.asList(1, "not-a-number"));
+    rows.add(java.util.Arrays.asList(2, "12.50"));
+    ParquetData data = new ParquetData(names, types, rows);
+
+    DuckDBParquetService service = new DuckDBParquetService();
+    java.io.File target = safePathTempDir.resolve("warns.parquet").toFile();
+    service.saveParquet(target, data);
+
+    org.assertj.core.api.Assertions.assertThat(service.getLastSaveConversionWarnings())
+        .hasSize(1);
+    org.assertj.core.api.Assertions.assertThat(service.getLastSaveConversionWarnings().get(0))
+        .contains("amount").contains("1 value");
+  }
 }
 

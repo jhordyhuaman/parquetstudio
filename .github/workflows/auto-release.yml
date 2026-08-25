@@ -1,0 +1,79 @@
+name: Auto Release
+
+# On every merge/push to main: if the version in gradle.properties has no
+# release yet, build the plugin, publish it to JetBrains Marketplace, and
+# create the matching GitHub Release + tag. Merges that don't bump the
+# version are skipped silently.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Read plugin version
+      id: version
+      run: echo "VERSION=$(grep '^pluginVersion=' gradle.properties | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+    - name: Skip if this version is already released
+      id: check
+      run: |
+        if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.VERSION }}" | grep -q tags; then
+          echo "SKIP=true" >> "$GITHUB_OUTPUT"
+          echo "v${{ steps.version.outputs.VERSION }} already released — skipping."
+        else
+          echo "SKIP=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Set up JDK 17
+      if: steps.check.outputs.SKIP == 'false'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Grant execute permission for gradlew
+      if: steps.check.outputs.SKIP == 'false'
+      run: chmod +x gradlew
+
+    - name: Build and verify plugin
+      if: steps.check.outputs.SKIP == 'false'
+      run: ./gradlew clean build verifyPlugin buildPlugin
+
+    - name: Publish plugin to JetBrains Marketplace
+      if: steps.check.outputs.SKIP == 'false'
+      run: ./gradlew publishPlugin
+      env:
+        PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+
+    - name: Create GitHub Release and tag
+      if: steps.check.outputs.SKIP == 'false'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.VERSION }}
+        name: Release ${{ steps.version.outputs.VERSION }}
+        files: build/distributions/*.zip
+        body: |
+          ## Changes
+
+          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+          Published automatically to the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29009-parquet-studio) — the update appears in your IDE once JetBrains moderation approves it.
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

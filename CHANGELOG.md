@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-24
+
+### Fixed
+- **Windows long-path and special-character file loading** - Fixed DuckDB pattern error when loading files with long paths or special characters on Windows
+- **File-opening flow rewritten** - Eliminated intermittent open/close failures with improved error handling and recovery
+- **Save-time crash on small files** - Removed IndexOutOfBounds error when saving files with 10 or fewer columns
+
+### Improved
+- **Unsaved changes warning** - Added confirmation dialog when closing files with unsaved modifications
+- **NULL value conversion feedback** - Display warning dialog when cell values are converted to NULL during save operation
+
+[1.6.0]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.6.0
+
 ## [1.5.0] - 2026-01-05
 
 ### Added
