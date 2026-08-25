@@ -131,6 +131,36 @@ class ParquetOptimizationServiceTest {
   }
 
   @Test
+  @DisplayName("consolidateHandlesGlobCharPaths")
+  void consolidateHandlesGlobCharPaths() throws Exception {
+    File destDir = new File(tempDir.toFile(), "frag-for-glob");
+    destDir.mkdirs();
+    List<File> parts = service.fragment(fixture, destDir, FragmentCriterion.NUM_FILES, 2);
+    assertThat(parts).hasSize(2);
+
+    // Directory name contains a glob wildcard ('*'). If a source path is handed to DuckDB
+    // unsafely (not routed through SafeParquetPath.toReadable), '*' expands to match every
+    // file in the directory -- including this decoy -- silently inflating the row count.
+    File globDir = new File(tempDir.toFile(), "batch [*]");
+    globDir.mkdirs();
+    List<File> globSources = new ArrayList<>();
+    for (File part : parts) {
+      File copy = new File(globDir, part.getName());
+      java.nio.file.Files.copy(part.toPath(), copy.toPath());
+      globSources.add(copy);
+    }
+    File decoy = new File(globDir, "decoy-part-99999.parquet");
+    duckDBParquetService.saveParquet(decoy, buildFixtureData(3), "ZSTD");
+
+    File output = new File(tempDir.toFile(), "consolidated-glob.parquet");
+    long totalRows = service.consolidate(globSources, output);
+
+    assertThat(totalRows).isEqualTo(FIXTURE_ROWS);
+    ParquetData consolidated = duckDBParquetService.loadParquet(output);
+    assertThat(consolidated.getRows()).hasSize(FIXTURE_ROWS);
+  }
+
+  @Test
   @DisplayName("consolidateRejectsMismatchedSchemas")
   void consolidateRejectsMismatchedSchemas() throws Exception {
     File fixtureA = new File(tempDir.toFile(), "fixtureA.parquet");

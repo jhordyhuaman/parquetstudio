@@ -82,6 +82,9 @@ public class ParquetOptimizationService {
         rowsPerPart = 1;
       }
 
+      // Assumes DuckDB's parquet scan order is stable across identical repeated queries on an
+      // unmodified file; SQL gives no ORDER BY guarantee, but a static file + no ORDER BY has been
+      // observed to scan in on-disk row order across DuckDB versions used here.
       long partIndex = 0;
       long offset = 0;
       while (offset < totalRows) {
@@ -180,26 +183,40 @@ public class ParquetOptimizationService {
         }
       }
 
-      StringBuilder fileList = new StringBuilder();
-      for (int i = 0; i < sources.size(); i++) {
-        if (i > 0) fileList.append(", ");
-        fileList.append('\'').append(sources.get(i).getAbsolutePath().replace("'", "''")).append('\'');
-      }
+      List<File> readableSources = new ArrayList<>();
+      try {
+        StringBuilder fileList = new StringBuilder();
+        for (int i = 0; i < sources.size(); i++) {
+          File readable = SafeParquetPath.toReadable(sources.get(i));
+          readableSources.add(readable);
+          if (i > 0) fileList.append(", ");
+          fileList.append('\'').append(readable.getAbsolutePath().replace("'", "''")).append('\'');
+        }
 
-      long[] totalRows = new long[1];
-      SafeParquetPath.writeThenMove(
-          output,
-          target -> {
-            String copySql =
-                "COPY (SELECT * FROM read_parquet([" + fileList + "])) TO '"
-                    + target.getAbsolutePath().replace("'", "''")
-                    + "' (FORMAT PARQUET, COMPRESSION ZSTD)";
-            try (Statement st = conn.createStatement()) {
-              st.execute(copySql);
+        long[] totalRows = new long[1];
+        SafeParquetPath.writeThenMove(
+            output,
+            target -> {
+              String copySql =
+                  "COPY (SELECT * FROM read_parquet([" + fileList + "])) TO '"
+                      + target.getAbsolutePath().replace("'", "''")
+                      + "' (FORMAT PARQUET, COMPRESSION ZSTD)";
+              try (Statement st = conn.createStatement()) {
+                st.execute(copySql);
+              }
+              totalRows[0] = countRows(conn, target);
+            });
+        return totalRows[0];
+      } finally {
+        for (int i = 0; i < sources.size(); i++) {
+          File readable = readableSources.get(i);
+          if (SafeParquetPath.isTempCopy(sources.get(i), readable)) {
+            if (!readable.delete()) {
+              LOGGER.warn("Could not delete temp copy: " + readable.getAbsolutePath());
             }
-            totalRows[0] = countRows(conn, target);
-          });
-      return totalRows[0];
+          }
+        }
+      }
     }
   }
 
