@@ -18,6 +18,7 @@ import com.github.jhordyhuaman.parquetstudio.model.ParquetData;
 import com.github.jhordyhuaman.parquetstudio.model.ParquetTableModel;
 import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetEditorService;
+import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
 import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
@@ -51,6 +52,7 @@ public class ParquetEditorPanel extends JPanel {
   private static final Logger LOGGER = Logger.getInstance(ParquetEditorPanel.class);
 
   private final ParquetEditorService editorService;
+  private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
   private ParquetTableModel tableModel;
   private JBTable dataTable;
   private JLabel statusLabel;
@@ -336,10 +338,10 @@ public class ParquetEditorPanel extends JPanel {
     saveAsButton.setToolTipText("Save As...");
     saveAsButton.addActionListener(e -> saveAsParquet());
 
-    // Compact - rewrite the current file in place with ZSTD compression
+    // Optimize - opens a dialog offering Compact / Fragment / Consolidate
     compactButton = new JButton(AllIcons.Actions.Collapseall);
-    compactButton.setToolTipText("Compact file (rewrite with ZSTD compression)");
-    compactButton.addActionListener(e -> compactFile());
+    compactButton.setToolTipText("Optimize file…");
+    compactButton.addActionListener(e -> openOptimizeDialog());
 
     // Validate Schema button
     JButton validateSchemaButton = new JButton("Validate Schema");
@@ -1190,6 +1192,137 @@ public class ParquetEditorPanel extends JPanel {
       LOGGER.error("Error saving Parquet file", e);
       Messages.showErrorDialog("Error saving file: " + e.getMessage(), "Error");
     }
+  }
+
+  /**
+   * Opens the Optimize dialog (Compact / Fragment / Consolidate) and runs the chosen operation.
+   */
+  private void openOptimizeDialog() {
+    File currentFile = editorService.getCurrentFile();
+    boolean hasFile = currentFile != null && tableModel != null;
+    OptimizeFileDialog dialog =
+        new OptimizeFileDialog(this, hasFile, hasFile);
+    if (!dialog.showAndGet()) {
+      return;
+    }
+    runOptimize(dialog);
+  }
+
+  /**
+   * Executes the operation chosen in an already-confirmed {@link OptimizeFileDialog}.
+   * Exposed so callers hosting this panel (e.g. the tool window) can route a dialog result here.
+   */
+  public void runOptimize(OptimizeFileDialog dialog) {
+    switch (dialog.getOperation()) {
+      case COMPACT:
+        compactFile();
+        break;
+      case FRAGMENT:
+        fragmentFile(dialog);
+        break;
+      case CONSOLIDATE:
+        consolidateFromDialog(dialog);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Splits the currently open file into part files per the dialog's chosen criterion.
+   */
+  private void fragmentFile(OptimizeFileDialog dialog) {
+    File currentFile = editorService.getCurrentFile();
+    if (currentFile == null) {
+      return;
+    }
+    File destDir = dialog.getFragmentDestDir();
+    ParquetOptimizationService.FragmentCriterion criterion = dialog.getFragmentCriterion();
+    long value = dialog.getFragmentValue();
+
+    boolean hasExistingParts = optimizationService.listParquetFiles(destDir).stream()
+        .anyMatch(f -> f.getName().startsWith("part-"));
+    if (hasExistingParts) {
+      int overwrite = JOptionPane.showConfirmDialog(
+          this,
+          "The destination directory already contains part-*.parquet files. Continue?",
+          "Confirm Overwrite",
+          JOptionPane.YES_NO_OPTION,
+          JOptionPane.WARNING_MESSAGE);
+      if (overwrite != JOptionPane.YES_OPTION) {
+        return;
+      }
+    }
+
+    statusLabel.setText("Fragmenting…");
+    SwingWorker<List<File>, Void> fragmentWorker =
+        new SwingWorker<List<File>, Void>() {
+          @Override
+          protected List<File> doInBackground() throws Exception {
+            return optimizationService.fragment(currentFile, destDir, criterion, value);
+          }
+
+          @Override
+          protected void done() {
+            try {
+              List<File> parts = get();
+              long totalSize = 0;
+              for (File part : parts) {
+                totalSize += part.length();
+              }
+              String message = String.format(
+                  "Fragmented into %d part(s), total size %s, in %s",
+                  parts.size(), formatFileSize(totalSize), destDir.getName());
+              statusLabel.setText(message);
+              Messages.showInfoMessage(message, "Fragment Complete");
+            } catch (Exception e) {
+              LOGGER.error("Error fragmenting Parquet file", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog(
+                  "Error fragmenting file: " + errorMessage + " (the source file was not modified)",
+                  "Error");
+              statusLabel.setText("Error fragmenting file.");
+            }
+          }
+        };
+    fragmentWorker.execute();
+  }
+
+  /**
+   * Consolidates the parquet files found in the dialog's chosen source directory into the
+   * chosen output file.
+   */
+  private void consolidateFromDialog(OptimizeFileDialog dialog) {
+    File sourceDir = dialog.getConsolidateSourceDir();
+    File outputFile = dialog.getConsolidateOutputFile();
+    List<File> sources = optimizationService.listParquetFiles(sourceDir);
+
+    statusLabel.setText("Consolidating…");
+    SwingWorker<Long, Void> consolidateWorker =
+        new SwingWorker<Long, Void>() {
+          @Override
+          protected Long doInBackground() throws Exception {
+            return optimizationService.consolidate(sources, outputFile);
+          }
+
+          @Override
+          protected void done() {
+            try {
+              get();
+              String message = String.format(
+                  "Consolidated %d files → %s (%s)",
+                  sources.size(), outputFile.getName(), formatFileSize(outputFile.length()));
+              statusLabel.setText(message);
+              Messages.showInfoMessage(message, "Consolidate Complete");
+            } catch (Exception e) {
+              LOGGER.error("Error consolidating Parquet files", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog("Error consolidating files: " + errorMessage, "Error");
+              statusLabel.setText("Error consolidating files.");
+            }
+          }
+        };
+    consolidateWorker.execute();
   }
 
   /**

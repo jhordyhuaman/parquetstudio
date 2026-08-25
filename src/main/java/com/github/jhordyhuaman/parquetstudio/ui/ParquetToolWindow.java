@@ -14,6 +14,7 @@
 package com.github.jhordyhuaman.parquetstudio.ui;
 
 import com.github.jhordyhuaman.parquetstudio.Constants;
+import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.IconLoader;
@@ -23,6 +24,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
 
@@ -32,10 +34,13 @@ import javax.swing.filechooser.FileFilter;
 public class ParquetToolWindow extends JPanel {
   private static final Logger LOGGER = Logger.getInstance(ParquetToolWindow.class);
 
+  private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
+
   private JTabbedPane tabbedPane;
   private JPanel welcomePanel;
   private JPanel contentPanel;
   private JButton openButton;
+  private JButton optimizeButton;
 
   public ParquetToolWindow() {
     initializeUI();
@@ -182,7 +187,96 @@ public class ParquetToolWindow extends JPanel {
     openButton.addActionListener(e -> openParquetFile());
     toolbar.add(openButton);
 
+    // Optimize button - always available; works with no file open (Consolidate)
+    optimizeButton = new JButton(com.intellij.icons.AllIcons.Actions.Collapseall);
+    optimizeButton.setToolTipText("Optimize file…");
+    optimizeButton.addActionListener(e -> openOptimizeDialog());
+    toolbar.add(optimizeButton);
+
     return toolbar;
+  }
+
+  /**
+   * Opens the Optimize dialog. Compact/Fragment are only selectable when the current tab has a
+   * loaded ParquetEditorPanel with a file; Consolidate is always selectable.
+   */
+  private void openOptimizeDialog() {
+    ParquetEditorPanel activePanel = getActiveEditorPanel();
+    boolean hasFile = activePanel != null && activePanel.hasFile();
+    OptimizeFileDialog dialog = new OptimizeFileDialog(this, hasFile, hasFile);
+    if (!dialog.showAndGet()) {
+      return;
+    }
+
+    switch (dialog.getOperation()) {
+      case COMPACT:
+      case FRAGMENT:
+        // Compact/Fragment are only selectable when an editor panel with a file is active;
+        // route execution there so the compact/fragment workers reuse its own state.
+        if (activePanel != null) {
+          activePanel.runOptimize(dialog);
+        }
+        break;
+      case CONSOLIDATE:
+        consolidateFromDialog(dialog);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private ParquetEditorPanel getActiveEditorPanel() {
+    if (tabbedPane == null) {
+      return null;
+    }
+    int index = tabbedPane.getSelectedIndex();
+    if (index < 0) {
+      return null;
+    }
+    Component component = tabbedPane.getComponentAt(index);
+    return component instanceof ParquetEditorPanel ? (ParquetEditorPanel) component : null;
+  }
+
+  /**
+   * Consolidates the parquet files found in the dialog's chosen source directory into the
+   * chosen output file, then opens the result in a new tab.
+   */
+  private void consolidateFromDialog(OptimizeFileDialog dialog) {
+    File sourceDir = dialog.getConsolidateSourceDir();
+    File outputFile = dialog.getConsolidateOutputFile();
+    List<File> sources = optimizationService.listParquetFiles(sourceDir);
+
+    SwingWorker<Long, Void> consolidateWorker =
+        new SwingWorker<Long, Void>() {
+          @Override
+          protected Long doInBackground() throws Exception {
+            return optimizationService.consolidate(sources, outputFile);
+          }
+
+          @Override
+          protected void done() {
+            try {
+              get();
+              String message = String.format(
+                  "Consolidated %d files → %s (%s)",
+                  sources.size(), outputFile.getName(), formatFileSize(outputFile.length()));
+              Messages.showInfoMessage(message, "Consolidate Complete");
+              openFileInTab(outputFile);
+            } catch (Exception e) {
+              LOGGER.error("Error consolidating Parquet files", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog("Error consolidating files: " + errorMessage, "Error");
+            }
+          }
+        };
+    consolidateWorker.execute();
+  }
+
+  private String formatFileSize(long bytes) {
+    if (bytes < 1024) return bytes + " B";
+    int exp = (int) (Math.log(bytes) / Math.log(1024));
+    String pre = "KMGTPE".charAt(exp - 1) + "";
+    return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
   }
 
 
