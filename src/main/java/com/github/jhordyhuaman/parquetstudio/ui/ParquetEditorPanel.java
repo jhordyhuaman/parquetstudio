@@ -19,6 +19,7 @@ import com.github.jhordyhuaman.parquetstudio.model.ParquetTableModel;
 import com.github.jhordyhuaman.parquetstudio.model.SchemaValidationResult;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetEditorService;
 import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.ui.Messages;
@@ -60,6 +61,7 @@ public class ParquetEditorPanel extends JPanel {
   private JButton deleteRowButton;
   private JButton deleteColumnButton;
   private JButton saveAsButton;
+  private JButton compactButton;
   private JPanel containerPanel;
   private JPanel dataPanel;
   private JPanel schemaPanel;
@@ -334,6 +336,11 @@ public class ParquetEditorPanel extends JPanel {
     saveAsButton.setToolTipText("Save As...");
     saveAsButton.addActionListener(e -> saveAsParquet());
 
+    // Compact - rewrite the current file in place with ZSTD compression
+    compactButton = new JButton(AllIcons.Actions.Collapseall);
+    compactButton.setToolTipText("Compact file (rewrite with ZSTD compression)");
+    compactButton.addActionListener(e -> compactFile());
+
     // Validate Schema button
     JButton validateSchemaButton = new JButton("Validate Schema");
     validateSchemaButton.setToolTipText("Validate Parquet types against a schema file");
@@ -343,6 +350,7 @@ public class ParquetEditorPanel extends JPanel {
     goSchemaButton.addActionListener(e -> changePanel() );
 
     toolbar.add(saveAsButton);
+    toolbar.add(compactButton);
     toolbar.add(validateSchemaButton);
     toolbar.add(goSchemaButton);
 
@@ -533,6 +541,7 @@ public class ParquetEditorPanel extends JPanel {
     if (deleteColumnButton != null) deleteColumnButton.setEnabled(hasData);
     if (deleteRowButton != null) deleteRowButton.setEnabled(hasData);
     if (saveAsButton != null) saveAsButton.setEnabled(hasData);
+    if (compactButton != null) compactButton.setEnabled(hasData);
     if (goSchemaButton != null) goSchemaButton.setEnabled(hasData);
     if (searchField != null) searchField.setEnabled(hasData);
   }
@@ -1181,6 +1190,58 @@ public class ParquetEditorPanel extends JPanel {
       LOGGER.error("Error saving Parquet file", e);
       Messages.showErrorDialog("Error saving file: " + e.getMessage(), "Error");
     }
+  }
+
+  /**
+   * Rewrites the currently open file in place with ZSTD compression and reports the size change.
+   */
+  private void compactFile() {
+    File currentFile = editorService.getCurrentFile();
+    if (currentFile == null || tableModel == null) {
+      return;
+    }
+
+    long sizeBefore = currentFile.length();
+    statusLabel.setText("Compacting file...");
+
+    SwingWorker<Void, Void> compactWorker =
+        new SwingWorker<Void, Void>() {
+          @Override
+          protected Void doInBackground() throws Exception {
+            editorService.saveParquetFileWithCompression(currentFile, "ZSTD");
+            return null;
+          }
+
+          @Override
+          protected void done() {
+            try {
+              get();
+              markSaved();
+
+              long sizeAfter = currentFile.length();
+              String message;
+              if (sizeAfter < sizeBefore) {
+                int percent = (int) Math.round((1.0 - ((double) sizeAfter / sizeBefore)) * 100);
+                message = String.format(
+                    "Compacted: %s → %s (-%d%%)",
+                    formatFileSize(sizeBefore), formatFileSize(sizeAfter), percent);
+              } else {
+                message = String.format(
+                    "Compacted: size unchanged (%s) — file was already compact",
+                    formatFileSize(sizeAfter));
+              }
+
+              statusLabel.setText(message);
+              Messages.showInfoMessage(message, "Compact Complete");
+            } catch (Exception e) {
+              LOGGER.error("Error compacting Parquet file", e);
+              String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+              Messages.showErrorDialog("Error compacting file: " + errorMessage, "Error");
+              statusLabel.setText("Error compacting file.");
+            }
+          }
+        };
+    compactWorker.execute();
   }
 
   private TableCellEditor createTextCellEditor() {
