@@ -291,6 +291,18 @@ public class ParquetTableModel extends AbstractTableModel {
     fireTableRowsInserted(newRowIndex, newRowIndex);
   }
 
+  /**
+   * Appends a row with the given values (one per column, in column order) and fires the
+   * corresponding table-model event so listeners (e.g. the dirty-flag tracker) are notified.
+   *
+   * @param values the cell values for the new row, in column order
+   */
+  public void addRow(List<Object> values) {
+    rows.add(new ArrayList<>(values));
+    int newRowIndex = rows.size() - 1;
+    fireTableRowsInserted(newRowIndex, newRowIndex);
+  }
+
   public void deleteRow(int rowIndex) {
     if (rowIndex >= 0 && rowIndex < rows.size()) {
       rows.remove(rowIndex);

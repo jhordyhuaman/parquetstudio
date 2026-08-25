@@ -14,7 +14,13 @@
 package com.github.jhordyhuaman.parquetstudio.ui;
 
 import com.github.jhordyhuaman.parquetstudio.Constants;
+import com.github.jhordyhuaman.parquetstudio.model.ParquetData;
+import com.github.jhordyhuaman.parquetstudio.model.SchemaStructure;
+import com.github.jhordyhuaman.parquetstudio.service.DuckDBParquetService;
 import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
+import com.github.jhordyhuaman.parquetstudio.service.RemoteSchemaService;
+import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator;
+import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator.GenerationResult;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.IconLoader;
@@ -23,7 +29,10 @@ import java.awt.Component;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
@@ -35,12 +44,16 @@ public class ParquetToolWindow extends JPanel {
   private static final Logger LOGGER = Logger.getInstance(ParquetToolWindow.class);
 
   private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
+  private final RemoteSchemaService remoteSchemaService = new RemoteSchemaService();
+  private final SyntheticDataGenerator syntheticDataGenerator = new SyntheticDataGenerator();
+  private final DuckDBParquetService duckDBParquetService = new DuckDBParquetService();
 
   private JTabbedPane tabbedPane;
   private JPanel welcomePanel;
   private JPanel contentPanel;
   private JButton openButton;
   private JButton optimizeButton;
+  private JButton generateDataButton;
 
   public ParquetToolWindow() {
     initializeUI();
@@ -193,7 +206,110 @@ public class ParquetToolWindow extends JPanel {
     optimizeButton.addActionListener(e -> openOptimizeDialog());
     toolbar.add(optimizeButton);
 
+    // Generate Data button - always available; works with no file open
+    generateDataButton = new JButton("Generate Data");
+    generateDataButton.setToolTipText("Generate a new Parquet file from a schema (local file or URL)");
+    generateDataButton.addActionListener(e -> openGenerateDataDialog());
+    toolbar.add(generateDataButton);
+
     return toolbar;
+  }
+
+  /**
+   * Opens the Generate Data dialog and, on confirmation, runs the fetch/parse → generate →
+   * save → open pipeline on a background worker.
+   */
+  private void openGenerateDataDialog() {
+    GenerateDataDialog dialog = new GenerateDataDialog(this);
+    if (!dialog.showAndGet()) {
+      return;
+    }
+
+    boolean isLocal = dialog.isLocalFileSource();
+    File schemaFile = dialog.getSchemaFile();
+    String url = dialog.getUrl();
+    String token = dialog.getToken();
+    RemoteSchemaService.TokenStyle tokenStyle = dialog.getTokenStyle();
+    int rowCount = dialog.getRowCount();
+    Long seed = dialog.getSeed();
+    double nullRatio = dialog.getNullRatio();
+    File targetFile = dialog.getTargetFile();
+
+    String sourceLabel = isLocal ? schemaFile.getName() : urlWithoutQuery(url);
+
+    SwingWorker<GenerationResult, Void> worker = new SwingWorker<GenerationResult, Void>() {
+      @Override
+      protected GenerationResult doInBackground() throws Exception {
+        SchemaStructure schemaStructure;
+        if (isLocal) {
+          try {
+            schemaStructure = SchemaStructure.schemaFromFile(schemaFile.getAbsolutePath());
+          } catch (Exception e) {
+            throw new IOException("Failed to parse schema from \"" + schemaFile.getName() + "\": " + e.getMessage(), e);
+          }
+        } else {
+          String body;
+          try {
+            body = remoteSchemaService.fetchSchema(url, token, tokenStyle);
+          } catch (Exception e) {
+            throw new IOException("Failed to fetch schema from " + sourceLabel + ": " + e.getMessage(), e);
+          }
+          File tempSchemaFile = Files.createTempFile("parquetstudio-schema-", ".json").toFile();
+          tempSchemaFile.deleteOnExit();
+          try (FileWriter writer = new FileWriter(tempSchemaFile)) {
+            writer.write(body);
+          }
+          try {
+            schemaStructure = SchemaStructure.schemaFromFile(tempSchemaFile.getAbsolutePath());
+          } catch (Exception e) {
+            throw new IOException("Failed to parse schema from " + sourceLabel + ": " + e.getMessage(), e);
+          } finally {
+            tempSchemaFile.delete();
+          }
+        }
+        schemaStructure.changesTypesFields();
+
+        List<String> columnNames = new ArrayList<>();
+        List<String> columnTypes = new ArrayList<>();
+        for (var field : schemaStructure.fields) {
+          columnNames.add(field.name);
+          columnTypes.add(String.valueOf(field.type));
+        }
+
+        GenerationResult result =
+            syntheticDataGenerator.generate(columnNames, columnTypes, rowCount, seed, nullRatio);
+        duckDBParquetService.saveParquet(targetFile, result.getData());
+        return result;
+      }
+
+      @Override
+      protected void done() {
+        try {
+          GenerationResult result = get();
+          ParquetData data = result.getData();
+          StringBuilder message = new StringBuilder(
+              String.format("Generated %d rows → %s", data.getRows().size(), targetFile.getName()));
+          if (!result.getWarnings().isEmpty()) {
+            message.append("\n\nWarnings:");
+            for (String warning : result.getWarnings()) {
+              message.append("\n- ").append(warning);
+            }
+          }
+          Messages.showInfoMessage(message.toString(), "Generate Data Complete");
+          reloadOrOpen(targetFile);
+        } catch (Exception e) {
+          LOGGER.error("Error generating synthetic data", e);
+          String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+          Messages.showErrorDialog("Error generating data: " + errorMessage, "Error");
+        }
+      }
+    };
+    worker.execute();
+  }
+
+  private static String urlWithoutQuery(String url) {
+    int idx = url.indexOf('?');
+    return idx >= 0 ? url.substring(0, idx) : url;
   }
 
   /**
