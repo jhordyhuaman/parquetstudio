@@ -262,6 +262,23 @@ public class ParquetEditorService {
   }
 
   /**
+   * Saves the current table model to a Parquet file using the given compression codec.
+   *
+   * @param outputFile the file to save to
+   * @param compression the Parquet compression codec to use (e.g. "ZSTD"), or null for the
+   *     default
+   * @throws IllegalStateException if no data is loaded
+   * @throws Exception if saving fails
+   */
+  public void saveParquetFileWithCompression(File outputFile, String compression) throws Exception {
+    validateDataLoaded();
+
+    ParquetData dataClone = new ParquetData(tableModel.toParquetData());
+    duckDBService.saveParquet(outputFile, dataClone, compression);
+    LOGGER.info("Saved Parquet file with compression " + compression + ": " + outputFile.getAbsolutePath());
+  }
+
+  /**
    * Saves the Parquet file using the types defined in the schema file.
    * This method loads the schema, applies type conversions, and saves the file.
    *

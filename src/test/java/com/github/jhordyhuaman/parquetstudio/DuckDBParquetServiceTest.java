@@ -232,5 +232,65 @@ class DuckDBParquetServiceTest {
     org.assertj.core.api.Assertions.assertThat(service.getLastSaveConversionWarnings().get(0))
         .contains("amount").contains("1 value");
   }
+
+  @Test
+  @DisplayName("ZSTD round trip preserves schema and data")
+  void zstdRoundTripPreservesSchemaAndData() throws Exception {
+    File source = new File("src/test/resources/parquet/logical_date.parquet");
+    DuckDBParquetService loadService = new DuckDBParquetService();
+    ParquetData original = loadService.loadParquet(source);
+
+    File target = safePathTempDir.resolve("zstd_roundtrip.parquet").toFile();
+    loadService.saveParquet(target, original, "ZSTD");
+
+    assertThat(target).exists();
+    ParquetData reloaded = loadService.loadParquet(target);
+
+    assertThat(reloaded.getColumnNames()).isEqualTo(original.getColumnNames());
+    assertThat(reloaded.getColumnTypes()).isEqualTo(original.getColumnTypes());
+    assertThat(reloaded.getRows()).hasSameSizeAs(original.getRows());
+
+    for (int r = 0; r < original.getRows().size(); r++) {
+      List<Object> originalRow = original.getRows().get(r);
+      List<Object> reloadedRow = reloaded.getRows().get(r);
+      for (int c = 0; c < originalRow.size(); c++) {
+        Object expected = originalRow.get(c);
+        Object actual = reloadedRow.get(c);
+        assertThat(String.valueOf(actual))
+            .as("row %d col %d", r, c)
+            .isEqualTo(String.valueOf(expected));
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("ZSTD produces a smaller or equal file than default compression")
+  void zstdProducesSmallerOrEqualFileThanDefault() throws Exception {
+    File source = new File("src/test/resources/parquet/logical_date.parquet");
+    DuckDBParquetService loadService = new DuckDBParquetService();
+    ParquetData data = loadService.loadParquet(source);
+
+    File defaultFile = safePathTempDir.resolve("default_compression.parquet").toFile();
+    File zstdFile = safePathTempDir.resolve("zstd_compression.parquet").toFile();
+
+    loadService.saveParquet(defaultFile, data, null);
+    loadService.saveParquet(zstdFile, data, "ZSTD");
+
+    assertThat(zstdFile.length()).isLessThanOrEqualTo(defaultFile.length());
+  }
+
+  @Test
+  @DisplayName("Should reject unknown compression codec")
+  void rejectsUnknownCompressionCodec() throws Exception {
+    File source = new File("src/test/resources/parquet/logical_date.parquet");
+    DuckDBParquetService loadService = new DuckDBParquetService();
+    ParquetData data = loadService.loadParquet(source);
+
+    File target = safePathTempDir.resolve("evil.parquet").toFile();
+
+    assertThatThrownBy(
+            () -> loadService.saveParquet(target, data, "EVIL'); DROP TABLE x;--"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }
 
