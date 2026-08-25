@@ -74,4 +74,8 @@ tasks {
         sinceBuild.set(properties("pluginSinceBuild"))
         changeNotes.set(properties("changeNotes"))
     }
+
+    publishPlugin {
+        token.set(System.getenv("PUBLISH_TOKEN"))
+    }
 }
