@@ -189,9 +189,7 @@ public class ParquetEditorService {
    */
   public void addRows(java.util.List<java.util.List<Object>> rows) throws IllegalStateException {
     validateDataLoaded();
-    for (java.util.List<Object> row : rows) {
-      tableModel.addRow(row);
-    }
+    tableModel.addRows(rows);
     LOGGER.info("Added " + rows.size() + " synthetic rows");
   }
 

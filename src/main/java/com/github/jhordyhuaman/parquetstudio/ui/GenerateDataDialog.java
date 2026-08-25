@@ -320,7 +320,9 @@ public class GenerateDataDialog extends DialogWrapper {
   /** Returns the token as a String, built only at request time. Never logged or persisted. */
   public String getToken() {
     char[] chars = tokenField.getPassword();
-    return new String(chars);
+    String token = new String(chars);
+    java.util.Arrays.fill(chars, '\0');
+    return token;
   }
 
   public TokenStyle getTokenStyle() {

@@ -56,6 +56,9 @@ public class ParquetEditorPanel extends JPanel {
   private final ParquetEditorService editorService;
   private final ParquetOptimizationService optimizationService = new ParquetOptimizationService();
   private final SyntheticDataGenerator syntheticDataGenerator = new SyntheticDataGenerator();
+  // Spec default null ratio (5%); the "Add synthetic rows" mini-dialog intentionally offers no
+  // null% control, unlike the full Generate Data dialog.
+  private static final double DEFAULT_NULL_RATIO = 0.05;
   private JButton addSyntheticRowsButton;
   private ParquetTableModel tableModel;
   private JBTable dataTable;
@@ -834,24 +837,41 @@ public class ParquetEditorPanel extends JPanel {
       }
     }
 
-    try {
-      List<String> columnNames = tableModel.getColumnNames();
-      List<String> columnTypes = tableModel.getColumnTypes();
-      GenerationResult result =
-          syntheticDataGenerator.generate(columnNames, columnTypes, rowCount, seed, 0.0);
+    List<String> columnNames = tableModel.getColumnNames();
+    List<String> columnTypes = tableModel.getColumnTypes();
+    Long finalSeed = seed;
+    statusLabel.setText("Generating " + rowCount + " rows…");
 
-      editorService.addRows(result.getData().getRows());
-
-      StringBuilder message = new StringBuilder("Added " + rowCount + " synthetic rows.");
-      if (!result.getWarnings().isEmpty()) {
-        message.append(" Warnings: ").append(String.join("; ", result.getWarnings()));
+    SwingWorker<GenerationResult, Void> worker = new SwingWorker<GenerationResult, Void>() {
+      @Override
+      protected GenerationResult doInBackground() {
+        // The mini-dialog intentionally offers no null% control; use the spec default.
+        return syntheticDataGenerator.generate(
+            columnNames, columnTypes, rowCount, finalSeed, DEFAULT_NULL_RATIO);
       }
-      statusLabel.setText(message.toString());
-      updateStatusLabel();
-    } catch (Exception e) {
-      LOGGER.error("Error adding synthetic rows", e);
-      Messages.showErrorDialog("Error adding synthetic rows: " + e.getMessage(), "Error");
-    }
+
+      @Override
+      protected void done() {
+        try {
+          GenerationResult result = get();
+          editorService.addRows(result.getData().getRows());
+
+          updateStatusLabel();
+          if (!result.getWarnings().isEmpty()) {
+            Messages.showWarningDialog(
+                "Added " + rowCount + " synthetic rows.\n\nWarnings:\n"
+                    + String.join("\n", result.getWarnings()),
+                "Synthetic Rows Added");
+          }
+        } catch (Exception e) {
+          LOGGER.error("Error adding synthetic rows", e);
+          String errorMessage = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+          Messages.showErrorDialog("Error adding synthetic rows: " + errorMessage, "Error");
+          updateStatusLabel();
+        }
+      }
+    };
+    worker.execute();
   }
 
   private void addColumn() {
