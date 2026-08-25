@@ -135,6 +135,12 @@ public class SyntheticDataGenerator {
       case "BOOLEAN":
         return random.nextBoolean();
       case "VARCHAR":
+      case "STRING":
+      case "TEXT":
+      case "UTF8":
+        return generateVarchar(columnName, lowerName, random);
+      case "BINARY":
+      case "BYTES":
         return generateVarchar(columnName, lowerName, random);
       default:
         return UNSUPPORTED;

@@ -14,12 +14,17 @@
 package com.github.jhordyhuaman.parquetstudio;
 
 import com.github.jhordyhuaman.parquetstudio.model.ParquetData;
+import com.github.jhordyhuaman.parquetstudio.model.SchemaStructure;
 import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator;
 import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator.GenerationResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.FileWriter;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -162,5 +167,38 @@ public class SyntheticDataGeneratorTest {
 
     assertThat(result.getWarnings())
         .contains("payload: unsupported type STRUCT(x INT), generated NULLs");
+  }
+
+  @Test
+  void schemaFileTypesGenerateNonNullValues(@TempDir Path tempDir) throws Exception {
+    String schemaJson = "{"
+        + "\"partitions\": [],"
+        + "\"fields\": ["
+        + "{\"name\": \"customer_name\", \"type\": \"utf8\"},"
+        + "{\"name\": \"quantity\", \"type\": \"int32\"},"
+        + "{\"name\": \"amount\", \"type\": \"decimal(10,2)\"}"
+        + "]"
+        + "}";
+    Path schemaFile = tempDir.resolve("schema.json");
+    try (FileWriter writer = new FileWriter(schemaFile.toFile())) {
+      writer.write(schemaJson);
+    }
+
+    SchemaStructure schemaStructure = SchemaStructure.schemaFromFile(schemaFile.toAbsolutePath().toString());
+    schemaStructure.changesTypesFields();
+
+    List<String> names = new ArrayList<>();
+    List<String> types = new ArrayList<>();
+    for (var field : schemaStructure.fields) {
+      names.add(field.name);
+      types.add(String.valueOf(field.type));
+    }
+
+    GenerationResult result = generator.generate(names, types, 20, 7L, 0.0);
+
+    assertThat(result.getWarnings()).isEmpty();
+    for (List<Object> row : result.getData().getRows()) {
+      assertThat(row).doesNotContainNull();
+    }
   }
 }

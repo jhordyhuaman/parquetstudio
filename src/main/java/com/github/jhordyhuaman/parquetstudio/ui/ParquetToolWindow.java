@@ -267,6 +267,11 @@ public class ParquetToolWindow extends JPanel {
             tempSchemaFile.delete();
           }
         }
+        if (schemaStructure == null || schemaStructure.fields == null || schemaStructure.fields.isEmpty()) {
+          throw new IOException(
+              "The schema source does not contain a valid schema (missing 'fields'): " + sourceLabel);
+        }
+
         schemaStructure.changesTypesFields();
 
         List<String> columnNames = new ArrayList<>();
