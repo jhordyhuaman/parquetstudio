@@ -411,5 +411,51 @@ class ParquetTableModelTest {
     assertThat(model.getValueAt(0, 1)).isEqualTo(true); // active (was index 2, now 1)
     assertThat(model.getValueAt(0, 2)).isEqualTo("test_value"); // new_col (was index 3, now 2)
   }
+
+  @Test
+  @DisplayName("setColumnValue should apply the converted value to all rows and return the count")
+  void setColumnValueAppliesToAllRows() {
+    int changed = model.setColumnValue(0, "42", false);
+
+    assertThat(changed).isEqualTo(2);
+    assertThat(model.getValueAt(0, 0)).isEqualTo(42);
+    assertThat(model.getValueAt(1, 0)).isEqualTo(42);
+  }
+
+  @Test
+  @DisplayName("setColumnValue with onlyEmpty should only change null/empty cells")
+  void setColumnValueOnlyEmptyCells() {
+    model.setValueAt("Alice", 0, 1);
+    model.setValueAt(null, 1, 1);
+
+    int changed = model.setColumnValue(1, "Default", true);
+
+    assertThat(changed).isEqualTo(1);
+    assertThat(model.getValueAt(0, 1)).isEqualTo("Alice");
+    assertThat(model.getValueAt(1, 1)).isEqualTo("Default");
+  }
+
+  @Test
+  @DisplayName("setColumnValue should fire exactly one table model event")
+  void setColumnValueFiresSingleEvent() {
+    int[] eventCount = {0};
+    javax.swing.event.TableModelListener listener = e -> eventCount[0]++;
+    model.addTableModelListener(listener);
+
+    model.setColumnValue(0, "7", false);
+
+    assertThat(eventCount[0]).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("setColumnValue should convert the raw value to the column type")
+  void setColumnValueConvertsTypes() {
+    model.setColumnValue(0, "42", false);
+    assertThat(model.getValueAt(0, 0)).isInstanceOf(Integer.class);
+    assertThat(model.getValueAt(0, 0)).isEqualTo(42);
+
+    assertThatThrownBy(() -> model.setColumnValue(0, "not-a-number", false))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }
 
