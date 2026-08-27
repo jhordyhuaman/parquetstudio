@@ -64,7 +64,9 @@ tasks {
 
     test {
         useJUnitPlatform()
-        systemProperty("java.awt.headless", System.getProperty("java.awt.headless", "false"))
+        // Forward an explicit -Djava.awt.headless=... to the forked test JVM. When it is not
+        // given, leave it unset so the JVM auto-detects (CI has no display, developers do).
+        System.getProperty("java.awt.headless")?.let { systemProperty("java.awt.headless", it) }
         testLogging {
             events("passed", "skipped", "failed")
         }
