@@ -22,7 +22,6 @@ import com.github.jhordyhuaman.parquetstudio.service.ParquetOptimizationService;
 import com.github.jhordyhuaman.parquetstudio.service.SchemaValidationService;
 import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator;
 import com.github.jhordyhuaman.parquetstudio.service.SyntheticDataGenerator.GenerationResult;
-import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.ui.Messages;
@@ -405,7 +404,8 @@ public class ParquetEditorPanel extends JPanel {
     saveAsButton.addActionListener(e -> saveAsParquet());
 
     // Optimize - opens a dialog offering Compact / Fragment / Consolidate
-    compactButton = new JButton(AllIcons.Actions.Collapseall);
+    compactButton =
+        new JButton(IconLoader.getIcon("/icons/ui/optimize/optimize.svg", ParquetEditorPanel.class));
     compactButton.setToolTipText("Optimize file…");
     compactButton.addActionListener(e -> openOptimizeDialog());
 
@@ -417,11 +417,17 @@ public class ParquetEditorPanel extends JPanel {
     goSchemaButton = new JButton("View Schema");
     goSchemaButton.addActionListener(e -> changePanel() );
 
-    addSyntheticRowsButton = new JButton("Add synthetic rows");
+    addSyntheticRowsButton =
+        new JButton(
+            "Add synthetic rows",
+            IconLoader.getIcon("/icons/ui/generateData/generateData.svg", ParquetEditorPanel.class));
     addSyntheticRowsButton.setToolTipText("Generate and append realistic test rows to this file");
     addSyntheticRowsButton.addActionListener(e -> addSyntheticRows());
 
-    setColumnValueButton = new JButton("Set column value");
+    setColumnValueButton =
+        new JButton(
+            "Set column value",
+            IconLoader.getIcon("/icons/ui/setColumnValue/setColumnValue.svg", ParquetEditorPanel.class));
     setColumnValueButton.setToolTipText("Bulk-set the value of the selected column for all (or empty) rows");
     setColumnValueButton.addActionListener(e -> setColumnValueForSelectedColumn());
 
