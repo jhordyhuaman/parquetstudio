@@ -425,7 +425,18 @@ public class ParquetTableModel extends AbstractTableModel {
   }
 
   /**
-   * Sets a single value across many rows of one column in a single batch, firing exactly one
+   * Validates (and returns) the converted value for a column type without mutating any data.
+   * Public so UI dialogs (e.g. Set Column Value) can validate user input before applying it, and
+   * report the same conversion errors {@link #setColumnValue} would raise.
+   *
+   * @throws IllegalArgumentException if the value cannot be converted to the given type
+   */
+  public Object convertValueForValidation(String rawValue, String columnType) {
+    return convertValue(rawValue, columnType);
+  }
+
+  /**
+   * Sets a single value across all rows of one column in a single batch, firing exactly one
    * table-model event instead of one per cell (per-cell {@link #setValueAt} calls would be too
    * slow/noisy for hundreds of rows).
    *
@@ -437,18 +448,26 @@ public class ParquetTableModel extends AbstractTableModel {
    * @throws IllegalArgumentException if the value cannot be converted to the column's type, or if
    *     columnIndex is out of range
    */
-  /**
-   * Validates (and returns) the converted value for a column type without mutating any data.
-   * Public so UI dialogs (e.g. Set Column Value) can validate user input before applying it, and
-   * report the same conversion errors {@link #setColumnValue} would raise.
-   *
-   * @throws IllegalArgumentException if the value cannot be converted to the given type
-   */
-  public Object convertValueForValidation(String rawValue, String columnType) {
-    return convertValue(rawValue, columnType);
+  public int setColumnValue(int columnIndex, String rawValue, boolean onlyEmpty) {
+    return setColumnValue(columnIndex, rawValue, onlyEmpty, null);
   }
 
-  public int setColumnValue(int columnIndex, String rawValue, boolean onlyEmpty) {
+  /**
+   * Sets a single value across a scoped set of rows of one column in a single batch, firing
+   * exactly one table-model event instead of one per cell.
+   *
+   * @param columnIndex the column to update
+   * @param rawValue the raw (string) value to convert and apply; {@code null}/empty sets NULL
+   * @param onlyEmpty if true, only rows whose current cell is {@code null} or an empty string are
+   *     changed
+   * @param modelRowIndices when {@code null}, every row is in scope (existing behavior); when
+   *     non-null, only rows whose model index is contained in this set are considered
+   * @return the number of cells actually changed
+   * @throws IllegalArgumentException if the value cannot be converted to the column's type, or if
+   *     columnIndex is out of range
+   */
+  public int setColumnValue(
+      int columnIndex, String rawValue, boolean onlyEmpty, java.util.Set<Integer> modelRowIndices) {
     if (columnIndex < 0 || columnIndex >= columnNames.size()) {
       throw new IllegalArgumentException("Invalid column index: " + columnIndex);
     }
@@ -457,7 +476,11 @@ public class ParquetTableModel extends AbstractTableModel {
     Object convertedValue = convertValue(rawValue, columnType);
 
     int changed = 0;
-    for (List<Object> row : rows) {
+    for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+      if (modelRowIndices != null && !modelRowIndices.contains(rowIndex)) {
+        continue;
+      }
+      List<Object> row = rows.get(rowIndex);
       while (row.size() <= columnIndex) {
         row.add(null);
       }

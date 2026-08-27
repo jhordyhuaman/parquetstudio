@@ -26,16 +26,33 @@ public class SetColumnValueDialog extends DialogWrapper {
   private final int columnIndex;
   private final String columnName;
   private final String columnType;
+  private final int totalRows;
+  private final int visibleRows;
 
   private JTextField valueField;
   private JCheckBox onlyEmptyCheckBox;
+  private JRadioButton allRowsRadio;
+  private JRadioButton filteredRowsRadio;
 
   public SetColumnValueDialog(Component parent, ParquetTableModel tableModel, int columnIndex) {
+    this(parent, tableModel, columnIndex, -1, -1);
+  }
+
+  /**
+   * @param totalRows total rows in the underlying model, or {@code -1} if unknown/not applicable
+   *     (no scope UI shown)
+   * @param visibleRows rows currently visible under the active filter; if equal to {@code
+   *     totalRows}, no filter is active and no scope choice is offered
+   */
+  public SetColumnValueDialog(
+      Component parent, ParquetTableModel tableModel, int columnIndex, int totalRows, int visibleRows) {
     super(parent, true);
     this.tableModel = tableModel;
     this.columnIndex = columnIndex;
     this.columnName = tableModel.getColumnNames().get(columnIndex);
     this.columnType = tableModel.getColumnTypes().get(columnIndex);
+    this.totalRows = totalRows;
+    this.visibleRows = visibleRows;
     setTitle("Set Column Value");
     init();
   }
@@ -71,8 +88,31 @@ public class SetColumnValueDialog extends DialogWrapper {
     onlyEmptyCheckBox = new JCheckBox("Only empty/NULL cells");
     panel.add(onlyEmptyCheckBox, gbc);
 
-    panel.setPreferredSize(new Dimension(380, 130));
+    int nextRow = 3;
+    boolean hasFilter = totalRows >= 0 && visibleRows >= 0;
+    if (hasFilter && visibleRows < totalRows) {
+      allRowsRadio = new JRadioButton("All " + totalRows + " rows", true);
+      filteredRowsRadio = new JRadioButton("Only the " + visibleRows + " filtered rows");
+      ButtonGroup group = new ButtonGroup();
+      group.add(allRowsRadio);
+      group.add(filteredRowsRadio);
+
+      gbc.gridy = nextRow++;
+      panel.add(allRowsRadio, gbc);
+      gbc.gridy = nextRow++;
+      panel.add(filteredRowsRadio, gbc);
+    } else if (hasFilter) {
+      gbc.gridy = nextRow++;
+      panel.add(new JLabel("Applies to all " + totalRows + " rows"), gbc);
+    }
+
+    panel.setPreferredSize(new Dimension(380, 130 + (nextRow - 3) * 25));
     return panel;
+  }
+
+  /** Returns true if the "Only the filtered rows" scope was selected. */
+  public boolean isScopedToFilteredRows() {
+    return filteredRowsRadio != null && filteredRowsRadio.isSelected();
   }
 
   @Override

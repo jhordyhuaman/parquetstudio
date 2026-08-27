@@ -457,5 +457,16 @@ class ParquetTableModelTest {
     assertThatThrownBy(() -> model.setColumnValue(0, "not-a-number", false))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  @DisplayName("setColumnValue restricted to given model row indices should only change those rows")
+  void setColumnValueRestrictedToGivenRows() {
+    int changed = model.setColumnValue(
+        0, "99", false, new java.util.HashSet<>(java.util.List.of(1)));
+
+    assertThat(changed).isEqualTo(1);
+    assertThat(model.getValueAt(0, 0)).isNotEqualTo(99);
+    assertThat(model.getValueAt(1, 0)).isEqualTo(99);
+  }
 }
 

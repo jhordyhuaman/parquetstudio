@@ -529,7 +529,7 @@ public class ParquetEditorPanel extends JPanel {
     if (viewCol < 0) {
       return;
     }
-    int viewRow = dataTable.getRowCount() > 0 ? 0 : 0;
+    int viewRow = 0;
     Rectangle cellRect = dataTable.getCellRect(viewRow, viewCol, true);
     dataTable.scrollRectToVisible(cellRect);
   }
@@ -616,18 +616,32 @@ public class ParquetEditorPanel extends JPanel {
       return;
     }
 
-    SetColumnValueDialog dialog = new SetColumnValueDialog(this, tableModel, modelColumnIndex);
+    int totalRows = tableModel.getRowCount();
+    int visibleRows = dataTable.getRowCount();
+    SetColumnValueDialog dialog =
+        new SetColumnValueDialog(this, tableModel, modelColumnIndex, totalRows, visibleRows);
     if (!dialog.showAndGet()) {
       return;
     }
 
     try {
-      int changed = tableModel.setColumnValue(modelColumnIndex, dialog.getValue(), dialog.isOnlyEmpty());
+      boolean scopedToFiltered = dialog.isScopedToFilteredRows();
+      java.util.Set<Integer> modelRowIndices = null;
+      if (scopedToFiltered) {
+        modelRowIndices = new HashSet<>();
+        for (int viewRow = 0; viewRow < dataTable.getRowCount(); viewRow++) {
+          modelRowIndices.add(dataTable.convertRowIndexToModel(viewRow));
+        }
+      }
+      int changed = tableModel.setColumnValue(
+          modelColumnIndex, dialog.getValue(), dialog.isOnlyEmpty(), modelRowIndices);
       String columnName = dialog.getColumnName();
       String displayValue = dialog.getValue() == null || dialog.getValue().trim().isEmpty()
           ? "NULL" : dialog.getValue();
+      String scopeText = scopedToFiltered ? "filtered rows" : "all rows";
       statusLabel.setText(
-          "Set " + displayValue + " in " + changed + " cell(s) of column " + columnName);
+          "Set " + displayValue + " in " + changed + " cell(s) of column " + columnName
+              + " (" + scopeText + ")");
     } catch (IllegalArgumentException e) {
       Messages.showErrorDialog(e.getMessage(), "Error");
     }
