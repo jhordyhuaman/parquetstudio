@@ -448,7 +448,9 @@ public class ParquetEditorPanel extends JPanel {
    * Binds Ctrl+F (and Cmd+F on macOS) at the panel level to focus the find-column field.
    */
   private void installFindColumnKeyBinding() {
-    int menuShortcutMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+    int menuShortcutMask = java.awt.GraphicsEnvironment.isHeadless()
+        ? java.awt.event.InputEvent.CTRL_DOWN_MASK
+        : Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
     KeyStroke keyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_F, menuShortcutMask);
     InputMap inputMap = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
     ActionMap actionMap = getActionMap();
