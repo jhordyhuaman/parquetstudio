@@ -37,14 +37,26 @@ import java.util.regex.Pattern;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileFilter;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellEditor;
+import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableModel;
 import javax.swing.table.TableRowSorter;
 import javax.swing.RowFilter;
 import javax.swing.text.*;
 import java.awt.Component;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Panel for editing a single Parquet file.
@@ -86,6 +98,13 @@ public class ParquetEditorPanel extends JPanel {
   private JLabel strictModeJLabel;
   private JTextPane jsonTextPane;
   private TableRowSorter<TableModel> rowSorter;
+
+  // SECTION: Column finder (Ctrl/Cmd+F)
+  private JTextField findColumnField;
+  private JLabel findMatchCountLabel;
+  private JButton setColumnValueButton;
+  private final List<Integer> findMatches = new ArrayList<>();
+  private int findCurrentMatchIndex = -1;
 
   // Track the file being loaded (before it's fully loaded into the service)
   private File loadingFile;
@@ -176,6 +195,9 @@ public class ParquetEditorPanel extends JPanel {
     dataTable.setFillsViewportHeight(true);
     JScrollPane tableScrollPane = new JScrollPane(dataTable);
     dataPanel.add(tableScrollPane, BorderLayout.CENTER);
+
+    installFindColumnHeaderRenderer();
+    installColumnHeaderPopup();
 
     containerPanel.add(dataPanel, Constants.DATA_PANEL);
 
@@ -313,6 +335,42 @@ public class ParquetEditorPanel extends JPanel {
 
     toolbar.add(new JSeparator(SwingConstants.VERTICAL));
 
+    // Find column
+    toolbar.add(new JLabel("Find column:"));
+    findColumnField = new JTextField(15);
+    findColumnField.setToolTipText("Find a column by name (Ctrl+F / Cmd+F)");
+    findColumnField.getDocument().addDocumentListener(new DocumentListener() {
+      @Override
+      public void insertUpdate(DocumentEvent e) { updateFindMatches(); }
+      @Override
+      public void removeUpdate(DocumentEvent e) { updateFindMatches(); }
+      @Override
+      public void changedUpdate(DocumentEvent e) { updateFindMatches(); }
+    });
+    findColumnField.addKeyListener(new KeyAdapter() {
+      @Override
+      public void keyPressed(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+          findColumnField.setText("");
+          dataTable.requestFocusInWindow();
+          e.consume();
+        } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+          if (e.isShiftDown()) {
+            jumpToMatch(findCurrentMatchIndex - 1);
+          } else {
+            jumpToMatch(findCurrentMatchIndex + 1);
+          }
+          e.consume();
+        }
+      }
+    });
+    toolbar.add(findColumnField);
+
+    findMatchCountLabel = new JLabel("");
+    toolbar.add(findMatchCountLabel);
+
+    toolbar.add(new JSeparator(SwingConstants.VERTICAL));
+
     // Add Row - using custom icon with theme support
     addRowButton = new JButton(IconLoader.getIcon("/icons/ui/addRowAbove/addRowAbove.svg", ParquetEditorPanel.class));
     addRowButton.setToolTipText("Add Row");
@@ -363,15 +421,248 @@ public class ParquetEditorPanel extends JPanel {
     addSyntheticRowsButton.setToolTipText("Generate and append realistic test rows to this file");
     addSyntheticRowsButton.addActionListener(e -> addSyntheticRows());
 
+    setColumnValueButton = new JButton("Set column value");
+    setColumnValueButton.setToolTipText("Bulk-set the value of the selected column for all (or empty) rows");
+    setColumnValueButton.addActionListener(e -> setColumnValueForSelectedColumn());
+
     toolbar.add(saveAsButton);
     toolbar.add(compactButton);
     toolbar.add(validateSchemaButton);
     toolbar.add(goSchemaButton);
     toolbar.add(addSyntheticRowsButton);
+    toolbar.add(setColumnValueButton);
 
     updateButtonStates(false);
+    installFindColumnKeyBinding();
 
     return toolbar;
+  }
+
+  /**
+   * Binds Ctrl+F (and Cmd+F on macOS) at the panel level to focus the find-column field.
+   */
+  private void installFindColumnKeyBinding() {
+    int menuShortcutMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+    KeyStroke keyStroke = KeyStroke.getKeyStroke(KeyEvent.VK_F, menuShortcutMask);
+    InputMap inputMap = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+    ActionMap actionMap = getActionMap();
+    inputMap.put(keyStroke, "focusFindColumn");
+    actionMap.put("focusFindColumn", new AbstractAction() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        if (findColumnField != null && findColumnField.isEnabled()) {
+          findColumnField.requestFocusInWindow();
+          findColumnField.selectAll();
+        }
+      }
+    });
+  }
+
+  /**
+   * Recomputes the set of columns whose name contains the current find text (case-insensitive),
+   * updates the match-count label, refreshes header highlighting, and jumps to the first match.
+   */
+  private void updateFindMatches() {
+    findMatches.clear();
+    findCurrentMatchIndex = -1;
+
+    if (tableModel == null || findColumnField == null) {
+      return;
+    }
+
+    String query = findColumnField.getText();
+    if (query == null || query.trim().isEmpty()) {
+      findMatchCountLabel.setText("");
+      repaintTableHeader();
+      return;
+    }
+
+    String lowerQuery = query.trim().toLowerCase();
+    List<String> columnNames = tableModel.getColumnNames();
+    for (int i = 0; i < columnNames.size(); i++) {
+      if (columnNames.get(i).toLowerCase().contains(lowerQuery)) {
+        findMatches.add(i);
+      }
+    }
+
+    if (findMatches.isEmpty()) {
+      findMatchCountLabel.setText("0 matches");
+      findMatchCountLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    } else {
+      findCurrentMatchIndex = 0;
+      updateMatchCountLabel();
+      scrollToMatch(findMatches.get(0));
+    }
+
+    repaintTableHeader();
+  }
+
+  /** Cycles to the match at the given index (wrapping), scrolling it into view. */
+  private void jumpToMatch(int newIndex) {
+    if (findMatches.isEmpty()) {
+      return;
+    }
+    int size = findMatches.size();
+    findCurrentMatchIndex = ((newIndex % size) + size) % size;
+    updateMatchCountLabel();
+    scrollToMatch(findMatches.get(findCurrentMatchIndex));
+    repaintTableHeader();
+  }
+
+  private void updateMatchCountLabel() {
+    findMatchCountLabel.setForeground(UIManager.getColor("Label.foreground"));
+    findMatchCountLabel.setText((findCurrentMatchIndex + 1) + "/" + findMatches.size());
+  }
+
+  /** Scrolls the given model column index into view, converting to the view index first. */
+  private void scrollToMatch(int modelColumnIndex) {
+    if (dataTable == null || tableModel == null) {
+      return;
+    }
+    int viewCol = dataTable.convertColumnIndexToView(modelColumnIndex);
+    if (viewCol < 0) {
+      return;
+    }
+    int viewRow = dataTable.getRowCount() > 0 ? 0 : 0;
+    Rectangle cellRect = dataTable.getCellRect(viewRow, viewCol, true);
+    dataTable.scrollRectToVisible(cellRect);
+  }
+
+  private void repaintTableHeader() {
+    if (dataTable != null) {
+      JTableHeader header = dataTable.getTableHeader();
+      if (header != null) {
+        header.repaint();
+      }
+    }
+  }
+
+  /**
+   * Installs a header renderer that wraps the default renderer and highlights matched columns
+   * (from the find-column feature), giving the current match a stronger highlight.
+   */
+  private void installFindColumnHeaderRenderer() {
+    if (dataTable == null) {
+      return;
+    }
+    JTableHeader header = dataTable.getTableHeader();
+    TableCellRenderer defaultRenderer = header.getDefaultRenderer();
+    header.setDefaultRenderer((table, value, isSelected, hasFocus, row, column) -> {
+      Component component = defaultRenderer.getTableCellRendererComponent(
+          table, value, isSelected, hasFocus, row, column);
+      int modelColumn = table.convertColumnIndexToModel(column);
+      Color background = null;
+      if (findMatches.contains(modelColumn)) {
+        boolean isCurrent = findCurrentMatchIndex >= 0
+            && findCurrentMatchIndex < findMatches.size()
+            && findMatches.get(findCurrentMatchIndex) == modelColumn;
+        Color base = UIManager.getColor("List.selectionBackground");
+        if (base == null) {
+          base = new Color(76, 133, 210);
+        }
+        background = isCurrent ? base : new Color(base.getRed(), base.getGreen(), base.getBlue(), 100);
+      }
+      if (component instanceof JComponent) {
+        ((JComponent) component).setOpaque(background != null);
+      }
+      if (background != null) {
+        component.setBackground(background);
+      }
+      return component;
+    });
+  }
+
+  /** Clears the column-finder state (called on file reload). */
+  private void resetFindColumnState() {
+    findMatches.clear();
+    findCurrentMatchIndex = -1;
+    if (findColumnField != null) {
+      findColumnField.setText("");
+    }
+    if (findMatchCountLabel != null) {
+      findMatchCountLabel.setText("");
+    }
+    repaintTableHeader();
+  }
+
+  /**
+   * Opens the Set Column Value dialog for the currently selected column (from the toolbar
+   * button), or shows a message if no column is selected.
+   */
+  private void setColumnValueForSelectedColumn() {
+    if (tableModel == null) {
+      Messages.showWarningDialog("Please load a Parquet file first.", "No File Loaded");
+      return;
+    }
+    int selectedColumn = dataTable.getSelectedColumn();
+    if (selectedColumn < 0) {
+      Messages.showInfoMessage("Select a column first.", "Info");
+      return;
+    }
+    int modelColumnIndex = dataTable.convertColumnIndexToModel(selectedColumn);
+    openSetColumnValueDialog(modelColumnIndex);
+  }
+
+  /** Opens the Set Column Value dialog for a specific model column index and applies the result. */
+  private void openSetColumnValueDialog(int modelColumnIndex) {
+    if (modelColumnIndex < 0 || modelColumnIndex >= tableModel.getColumnCount()) {
+      Messages.showErrorDialog("Invalid column selection.", "Error");
+      return;
+    }
+
+    SetColumnValueDialog dialog = new SetColumnValueDialog(this, tableModel, modelColumnIndex);
+    if (!dialog.showAndGet()) {
+      return;
+    }
+
+    try {
+      int changed = tableModel.setColumnValue(modelColumnIndex, dialog.getValue(), dialog.isOnlyEmpty());
+      String columnName = dialog.getColumnName();
+      String displayValue = dialog.getValue() == null || dialog.getValue().trim().isEmpty()
+          ? "NULL" : dialog.getValue();
+      statusLabel.setText(
+          "Set " + displayValue + " in " + changed + " cell(s) of column " + columnName);
+    } catch (IllegalArgumentException e) {
+      Messages.showErrorDialog(e.getMessage(), "Error");
+    }
+  }
+
+  /**
+   * Mouse listener on the table header that shows a "Set value for all rows…" popup menu when
+   * right-clicking a column header.
+   */
+  private void installColumnHeaderPopup() {
+    if (dataTable == null) {
+      return;
+    }
+    JTableHeader header = dataTable.getTableHeader();
+    header.addMouseListener(new MouseAdapter() {
+      @Override
+      public void mousePressed(MouseEvent e) {
+        maybeShowPopup(e);
+      }
+
+      @Override
+      public void mouseReleased(MouseEvent e) {
+        maybeShowPopup(e);
+      }
+
+      private void maybeShowPopup(MouseEvent e) {
+        if (!e.isPopupTrigger() || tableModel == null) {
+          return;
+        }
+        int viewColumn = header.columnAtPoint(e.getPoint());
+        if (viewColumn < 0) {
+          return;
+        }
+        int modelColumn = dataTable.convertColumnIndexToModel(viewColumn);
+        JPopupMenu popupMenu = new JPopupMenu();
+        JMenuItem setValueItem = new JMenuItem("Set value for all rows…");
+        setValueItem.addActionListener(a -> openSetColumnValueDialog(modelColumn));
+        popupMenu.add(setValueItem);
+        popupMenu.show(header, e.getX(), e.getY());
+      }
+    });
   }
 
   private JPanel createSchemaToolbar() {
@@ -560,6 +851,8 @@ public class ParquetEditorPanel extends JPanel {
     if (goSchemaButton != null) goSchemaButton.setEnabled(hasData);
     if (searchField != null) searchField.setEnabled(hasData);
     if (addSyntheticRowsButton != null) addSyntheticRowsButton.setEnabled(hasData);
+    if (findColumnField != null) findColumnField.setEnabled(hasData);
+    if (setColumnValueButton != null) setColumnValueButton.setEnabled(hasData);
   }
 
   /**
@@ -669,6 +962,7 @@ public class ParquetEditorPanel extends JPanel {
                 rowSorter = new TableRowSorter<>(tableModel);
                 dataTable.setRowSorter(rowSorter);
 
+                resetFindColumnState();
                 updateButtonStates(true);
 
                 // Switch to data panel
