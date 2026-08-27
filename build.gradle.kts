@@ -64,6 +64,7 @@ tasks {
 
     test {
         useJUnitPlatform()
+        systemProperty("java.awt.headless", System.getProperty("java.awt.headless", "false"))
         testLogging {
             events("passed", "skipped", "failed")
         }
