@@ -201,13 +201,17 @@ public class ParquetToolWindow extends JPanel {
     toolbar.add(openButton);
 
     // Optimize button - always available; works with no file open (Consolidate)
-    optimizeButton = new JButton(com.intellij.icons.AllIcons.Actions.Collapseall);
+    optimizeButton =
+        new JButton(IconLoader.getIcon("/icons/ui/optimize/optimize.svg", ParquetEditorPanel.class));
     optimizeButton.setToolTipText("Optimize file…");
     optimizeButton.addActionListener(e -> openOptimizeDialog());
     toolbar.add(optimizeButton);
 
     // Generate Data button - always available; works with no file open
-    generateDataButton = new JButton("Generate Data");
+    generateDataButton =
+        new JButton(
+            "Generate Data",
+            IconLoader.getIcon("/icons/ui/generateData/generateData.svg", ParquetEditorPanel.class));
     generateDataButton.setToolTipText("Generate a new Parquet file from a schema (local file or URL)");
     generateDataButton.addActionListener(e -> openGenerateDataDialog());
     toolbar.add(generateDataButton);

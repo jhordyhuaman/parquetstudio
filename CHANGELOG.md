@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-27
+
+### Added
+- **Column Finder** - Ctrl+F / Cmd+F finds and highlights matching column headers in wide files, with match count and next/previous navigation
+- **Set Column Value** - Bulk-set the value of a selected column for all rows, only empty/NULL cells, or (when a row filter is active) only the filtered rows
+- **Detach Tool Window** - One-click detach of the tool window to a separate screen
+- **Refreshed Toolbar Icons** - Project-consistent icons for optimize, set column value, and generate data actions
+
+### Fixed
+- **Bulk Edit Row Scope** - Set Column Value now requires an explicit choice between all rows and filtered rows, instead of silently applying to hidden rows when a filter was active
+
+[1.9.0]: https://github.com/jhordyhuaman/parquetstudio/releases/tag/v1.9.0
+
 ## [1.8.0] - 2026-08-25
 
 ### Added

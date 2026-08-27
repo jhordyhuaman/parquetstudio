@@ -137,7 +137,13 @@ public class ParquetTableModel extends AbstractTableModel {
     }
   }
 
-  private Object convertValue(String stringValue, String columnType) {
+  /**
+   * Converts a raw string value to the appropriate type for the given column type. Package-visible
+   * so both {@link #setValueAt} and {@link #setColumnValue} share a single conversion path.
+   *
+   * @throws IllegalArgumentException if the value cannot be converted to the given type
+   */
+  Object convertValue(String stringValue, String columnType) {
     if (stringValue == null || stringValue.trim().isEmpty()) {
       return null;
     }
@@ -416,6 +422,84 @@ public class ParquetTableModel extends AbstractTableModel {
 
     // Notify table that a column was removed
     fireTableStructureChanged();
+  }
+
+  /**
+   * Validates (and returns) the converted value for a column type without mutating any data.
+   * Public so UI dialogs (e.g. Set Column Value) can validate user input before applying it, and
+   * report the same conversion errors {@link #setColumnValue} would raise.
+   *
+   * @throws IllegalArgumentException if the value cannot be converted to the given type
+   */
+  public Object convertValueForValidation(String rawValue, String columnType) {
+    return convertValue(rawValue, columnType);
+  }
+
+  /**
+   * Sets a single value across all rows of one column in a single batch, firing exactly one
+   * table-model event instead of one per cell (per-cell {@link #setValueAt} calls would be too
+   * slow/noisy for hundreds of rows).
+   *
+   * @param columnIndex the column to update
+   * @param rawValue the raw (string) value to convert and apply; {@code null}/empty sets NULL
+   * @param onlyEmpty if true, only rows whose current cell is {@code null} or an empty string are
+   *     changed
+   * @return the number of cells actually changed
+   * @throws IllegalArgumentException if the value cannot be converted to the column's type, or if
+   *     columnIndex is out of range
+   */
+  public int setColumnValue(int columnIndex, String rawValue, boolean onlyEmpty) {
+    return setColumnValue(columnIndex, rawValue, onlyEmpty, null);
+  }
+
+  /**
+   * Sets a single value across a scoped set of rows of one column in a single batch, firing
+   * exactly one table-model event instead of one per cell.
+   *
+   * @param columnIndex the column to update
+   * @param rawValue the raw (string) value to convert and apply; {@code null}/empty sets NULL
+   * @param onlyEmpty if true, only rows whose current cell is {@code null} or an empty string are
+   *     changed
+   * @param modelRowIndices when {@code null}, every row is in scope (existing behavior); when
+   *     non-null, only rows whose model index is contained in this set are considered
+   * @return the number of cells actually changed
+   * @throws IllegalArgumentException if the value cannot be converted to the column's type, or if
+   *     columnIndex is out of range
+   */
+  public int setColumnValue(
+      int columnIndex, String rawValue, boolean onlyEmpty, java.util.Set<Integer> modelRowIndices) {
+    if (columnIndex < 0 || columnIndex >= columnNames.size()) {
+      throw new IllegalArgumentException("Invalid column index: " + columnIndex);
+    }
+
+    String columnType = columnTypes.get(columnIndex);
+    Object convertedValue = convertValue(rawValue, columnType);
+
+    int changed = 0;
+    for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+      if (modelRowIndices != null && !modelRowIndices.contains(rowIndex)) {
+        continue;
+      }
+      List<Object> row = rows.get(rowIndex);
+      while (row.size() <= columnIndex) {
+        row.add(null);
+      }
+      if (onlyEmpty) {
+        Object current = row.get(columnIndex);
+        boolean isEmpty = current == null
+            || (current instanceof String && ((String) current).isEmpty());
+        if (!isEmpty) {
+          continue;
+        }
+      }
+      row.set(columnIndex, convertedValue);
+      changed++;
+    }
+
+    if (changed > 0) {
+      fireTableDataChanged();
+    }
+    return changed;
   }
 
   public ParquetData toParquetData() {
